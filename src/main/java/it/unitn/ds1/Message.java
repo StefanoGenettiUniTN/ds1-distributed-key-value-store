@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.TreeMap;
 
 public class Message{
     // This class represents a message our actor will receive
@@ -46,7 +47,7 @@ public class Message{
         public final Map<Integer, ActorRef> activeNodes;
         
         public ResActiveNodeList(Map<Integer, ActorRef> _activeNodes){
-            this.activeNodes = Collections.unmodifiableMap(new HashMap<>(_activeNodes));
+            this.activeNodes = Collections.unmodifiableMap(new TreeMap<>(_activeNodes));
         }
     }
 

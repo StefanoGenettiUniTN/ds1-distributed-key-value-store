@@ -5,6 +5,7 @@ import akka.actor.ActorRef;
 import java.util.Map;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.TreeMap;
 
 public class Node extends AbstractActor {
   private final int key;                  // node key
@@ -13,7 +14,7 @@ public class Node extends AbstractActor {
 
   public Node(int _key){
     this.key = _key;
-    this.peers = new HashMap<>();
+    this.peers = new TreeMap<>();
     this.items = new HashMap<>();
   }
 
