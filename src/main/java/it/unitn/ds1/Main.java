@@ -15,9 +15,6 @@ public class Main {
     final ActorSystem system = ActorSystem.create("ds1-project");
 
     // 1. Create node group
-    // TODO: for the moment the group is statically defined, in a later implementation,
-    // there should be only one node at the beginning and then further pertecipants
-    // progressivelly request to join.
 
     //// create node n1
     ActorRef n1 = system.actorOf(Node.props(20),"n1");
@@ -53,6 +50,8 @@ public class Main {
     n3.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
 
     n1.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+
+    n2.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
 
     //...end step 1
 

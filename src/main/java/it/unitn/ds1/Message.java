@@ -30,16 +30,8 @@ public class Message{
         }
     }
 
-    // Bootstrap node receives this message
-    // from the node which is joining the
-    // system
-    public static class ReqActiveNodeList implements Serializable{
-        public final int key;
-
-        public ReqActiveNodeList(int _key){
-            this.key = _key;
-        }
-    }
+    // Bootstrap node receives this message from the node which is joining the system
+    public static class ReqActiveNodeList implements Serializable{}
 
     // Bootstrap node sends current list of active nodes to the node which
     // is joining the network
@@ -48,6 +40,16 @@ public class Message{
         
         public ResActiveNodeList(Map<Integer, ActorRef> _activeNodes){
             this.activeNodes = Collections.unmodifiableMap(new TreeMap<>(_activeNodes));
+        }
+    }
+
+    // The node which is joining the network sends this message to
+    // announce its presence to every node in the system
+    public static class AnnouncePresence implements Serializable{
+        public final int key;
+
+        public AnnouncePresence(int _key){
+            this.key = _key;
         }
     }
 

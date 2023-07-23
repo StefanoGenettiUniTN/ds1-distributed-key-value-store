@@ -1,16 +1,17 @@
 package it.unitn.ds1;
-import akka.actor.Props;
-import akka.actor.AbstractActor;
-import akka.actor.ActorRef;
-import java.util.Map;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.TreeMap;
+
+import akka.actor.AbstractActor;
+import akka.actor.ActorRef;
+import akka.actor.Props;
 
 public class Node extends AbstractActor {
   private final int key;                  // node key
-  private Map<Integer, ActorRef> peers;   // peers[K] points to the node in the group with key K
-  private Map<Integer, Item> items;       // the set of data item the node is currently responsible for
+  private final Map<Integer, ActorRef> peers;   // peers[K] points to the node in the group with key K
+  private final Map<Integer, Item> items;       // the set of data item the node is currently responsible for
 
   public Node(int _key){
     this.key = _key;
@@ -37,6 +38,7 @@ public class Node extends AbstractActor {
       .match(Message.JoinMsg.class, this::onJoinMsg)
       .match(Message.ReqActiveNodeList.class, this::onReqActiveNodeList)
       .match(Message.ResActiveNodeList.class, this::onResActiveNodeList)
+      .match(Message.AnnouncePresence.class, this::onAnnouncePresence)
       .build();
   }
 
@@ -68,7 +70,7 @@ public class Node extends AbstractActor {
     ActorRef msg_bootstrappingPeer = msg.bootstrappingPeer;
 
     // ask to the bootstrapping peer the current list of active nodes
-    Message.ReqActiveNodeList reqActiveNodeListMsg = new Message.ReqActiveNodeList(msg_key);
+    Message.ReqActiveNodeList reqActiveNodeListMsg = new Message.ReqActiveNodeList();
     msg_bootstrappingPeer.tell(reqActiveNodeListMsg, this.getSelf());
   }
 
@@ -77,12 +79,6 @@ public class Node extends AbstractActor {
   // the list of currently active nodes in the system
   private void onReqActiveNodeList(Message.ReqActiveNodeList msg){
     System.out.println("["+this.getSelf().path().name()+"] [onReqActiveNodeList]");
-
-    // retrive message data
-    int msg_key = msg.key;  // the key of the new node which is asking to join the system
-
-    // add the new node to the current list of active nodes
-    this.peers.put(msg_key, this.getSender());
 
     // send the list of currently active nodes
     Map<Integer, ActorRef> activeNodes = Collections.unmodifiableMap(this.peers);
@@ -95,9 +91,33 @@ public class Node extends AbstractActor {
   private void onResActiveNodeList(Message.ResActiveNodeList msg){
     System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList]");
 
-    // retrive message data and initialize
-    // the list of peers
-    this.peers = msg.activeNodes;
+    // retrive message data and initialize the list of peers
+    for (Map.Entry<Integer, ActorRef> pair : msg.activeNodes.entrySet()) {
+      this.peers.put(pair.getKey(), pair.getValue());
+    }
+
+    // the node add itself to the list of nodes currently active
+    this.peers.put(this.key, this.getSelf());
+
+    // the node can finally announce its presence to every node in the system
+    Message.AnnouncePresence announcePresence = new Message.AnnouncePresence(this.key);
+    this.peers.forEach((k, p) -> {
+      if(!p.equals(this.getSelf())){
+        p.tell(announcePresence, this.getSelf());
+      }
+    });
+  }
+
+  // Sender of this message is a node which is joining the system.
+  // It is announcing its presence to every node in the system.
+  private void onAnnouncePresence(Message.AnnouncePresence msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onAnnouncePresence]");
+
+    // retrive message data
+    int msg_key = msg.key;  // the key of the new node which is asking to join the system
+
+    // add the new node to the current list of active nodes
+    this.peers.put(msg_key, this.getSender());
   }
 
   // TODO: onGet(key)
