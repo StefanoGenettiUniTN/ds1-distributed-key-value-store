@@ -1,6 +1,5 @@
 package it.unitn.ds1;
 import java.io.IOException;
-import java.rmi.activation.Activator;
 
 import akka.actor.Actor;
 import akka.actor.ActorRef;
@@ -74,6 +73,28 @@ public class Main {
 
     // 2. Create client node c1
     ActorRef c1 = system.actorOf(Client.props(n1),"c1");
+    ActorRef c2 = system.actorOf(Client.props(n1),"c2");
+
+    c1.tell(new ClientMessage.Update(new Item(35, "Ciao")), ActorRef.noSender());
+    c2.tell(new ClientMessage.Update(new Item(7, "Come")), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(58, "Va")), ActorRef.noSender());
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    c1.tell(new ClientMessage.Get(7), ActorRef.noSender());
+    c1.tell(new ClientMessage.Get(35), ActorRef.noSender());
+    c1.tell(new ClientMessage.Get(58), ActorRef.noSender());
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    c1.tell(new ClientMessage.Update(new Item(58, "CAMBIATO")), ActorRef.noSender());
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    c2.tell(new ClientMessage.Get(58), ActorRef.noSender());
     //...end step 2
 
     try {

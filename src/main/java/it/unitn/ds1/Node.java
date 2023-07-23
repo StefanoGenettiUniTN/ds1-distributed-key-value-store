@@ -1,8 +1,6 @@
 package it.unitn.ds1;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.TreeMap;
+
+import java.util.*;
 
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
@@ -10,13 +8,18 @@ import akka.actor.Props;
 
 public class Node extends AbstractActor {
   private final int key;                  // node key
+  private int counterRequest;
   private final Map<Integer, ActorRef> peers;   // peers[K] points to the node in the group with key K
   private final Map<Integer, Item> items;       // the set of data item the node is currently responsible for
+  private final Map<Integer, Request> requests; // Lists of the requests
+
 
   public Node(int _key){
     this.key = _key;
     this.peers = new TreeMap<>();
     this.items = new HashMap<>();
+    this.requests = new HashMap<>();
+    counterRequest = 0;
   }
 
   @Override
@@ -38,6 +41,14 @@ public class Node extends AbstractActor {
       .match(Message.JoinMsg.class, this::onJoinMsg)
       .match(Message.ReqActiveNodeList.class, this::onReqActiveNodeList)
       .match(Message.ResActiveNodeList.class, this::onResActiveNodeList)
+      .match(Message.GetRequest.class, this::onGetRequest)
+      .match(Message.Read.class, this::onRead)
+      .match(Message.ReadItemInformation.class, this::onReadItemInformation)
+      .match(Message.Version.class, this::onVersion)
+      .match(Message.UpdateRequest.class, this::onUpdateRequest)
+      .match(Message.UpdateVersion.class, this::onUpdateVersion)
+      .match(Message.Write.class, this::onWrite)
+      .match(Message.WrittenItemInformation.class, this::onWrittenItemInformation)
       .match(Message.AnnouncePresence.class, this::onAnnouncePresence)
       .match(Message.CrashMsg.class, this::onCrashMsg)
       .build();
@@ -189,8 +200,116 @@ public class Node extends AbstractActor {
   /*----------END RECOVERY----------*/
 
   // TODO: onGet(key)
-
   // TODO: onUpdate(key, value)
+
+  private Set<Integer> getResponsibleNode(int key){
+    Set<Integer> responsibleNode = new TreeSet<>();
+    int n = 1;
+
+    for (Map.Entry<Integer, ActorRef> entry : peers.entrySet()) {
+      if(n > 0 && key < entry.getKey()){
+        responsibleNode.add(entry.getKey());
+        n--;
+      }
+
+      if(n <= 0){
+        break;
+      }
+    }
+
+    if(n > 0){
+      for (Map.Entry<Integer, ActorRef> entry : peers.entrySet()) {
+        if(n > 0){
+          responsibleNode.add(entry.getKey());
+          n--;
+        } else {
+          break;
+        }
+      }
+    }
+
+    return responsibleNode;
+  }
+
+  // Coordinator manage get request
+  private void onGetRequest(Message.GetRequest msg){
+    int key = msg.key;
+    System.out.println("["+this.getSelf().path().name()+"] [onGet] Coordinator");
+
+    counterRequest++;
+    this.requests.put(counterRequest, new Request(this.getSender(), new Item(key, "")));
+
+    for(int node : getResponsibleNode(key)) {
+      (peers.get(node)).tell(new Message.Read(counterRequest, key), this.getSelf());
+    }
+  }
+
+  //Return information of an item to the coordinato
+  private void onRead(Message.Read msg){
+    int item_key = msg.key;
+    Item item = this.items.get(item_key);
+    System.out.println("["+this.getSelf().path().name()+"] [onRead] Owner: " + key + " ITEM: " + item);
+    this.getSender().tell(new Message.ReadItemInformation(msg.requestId, item), ActorRef.noSender());
+  }
+
+  //Return information to the client
+  private void onReadItemInformation(Message.ReadItemInformation msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onItemInformation] Owner");
+    Request req = this.requests.remove(msg.requestId);
+    req.getClient().tell(new ClientMessage.GetResult(msg.item), ActorRef.noSender());
+  }
+
+
+  //Return version of an item
+  private void onVersion(Message.Version msg){
+    Item item = msg.item;
+    System.out.println("["+this.getSelf().path().name()+"] [onVersion] Owner");
+    if(this.items.get(item.getKey()) != null) {
+      item.setVersion((this.items.get(item.getKey())).getVersion());
+    }
+
+    this.getSender().tell(new Message.UpdateVersion(msg.requestId, item), ActorRef.noSender());
+  }
+
+  // Coordinator retrieve last version
+  private void onUpdateRequest(Message.UpdateRequest msg){
+    Item item = msg.item;
+    System.out.println("["+this.getSelf().path().name()+"] [onUpdate] Coordinator");
+
+    this.counterRequest++;
+    this.requests.put(counterRequest, new Request(this.getSender(), item));
+
+    for(int node : getResponsibleNode(item.key)) {
+      (peers.get(node)).tell(new Message.Version(counterRequest, item), this.getSelf());
+    }
+  }
+
+  private void onUpdateVersion(Message.UpdateVersion msg){
+    Item item = msg.item;
+    item.updateVersion();
+    System.out.println("["+this.getSelf().path().name()+"] [onUpdateVersion] Coordinator");
+
+    for(int node : getResponsibleNode(item.getKey())) {
+      (peers.get(node)).tell(new Message.Write(msg.requestId, item), this.getSelf());
+    }
+  }
+
+  //Update item and send element to the coordinator
+  private void onWrite(Message.Write msg){
+    Item item = msg.item;
+    this.items.put(item.getKey(), item);
+    System.out.println("["+this.getSelf().path().name()+"] [onItemInformation] Owner: " + key + " ITEM: " + item);
+    this.getSender().tell(new Message.WrittenItemInformation(msg.requestId, item), ActorRef.noSender());
+  }
+
+  //Return information to the client
+  private void onWrittenItemInformation(Message.WrittenItemInformation msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onItemInformation] Owner");
+    Request req = this.requests.remove(msg.requestId);
+    req.getClient().tell(new ClientMessage.UpdateResult(msg.item), ActorRef.noSender());
+  }
+
+
 
   // Print the list of nodes
   private void onPrintNodeList(Message.PrintNodeList msg){

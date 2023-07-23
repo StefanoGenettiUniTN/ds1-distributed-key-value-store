@@ -68,4 +68,80 @@ public class Message{
 
     // Message to trigger the print of the list of nodes
     public static class PrintNodeList implements Serializable {}
+
+    // This class represents a message to get an item
+    public static class GetRequest implements Serializable {
+        public final int key;
+        public GetRequest(int key) {
+            this.key = key;
+        }
+    }
+
+    // this class represents all the information of an item
+    public static class ReadItemInformation implements Serializable {
+        public final int requestId;
+        public final Item item;
+        public ReadItemInformation(int requestId, Item item) {
+            this.requestId = requestId;
+            this.item = item;
+        }
+    }
+
+    // This class represents a message to read an item
+    public static class Read implements Serializable {
+        public final int requestId;
+        public final int key;
+        public Read(int requestId, int key) {
+            this.requestId = requestId;
+            this.key = key;
+        }
+    }
+
+    // This class represents a message to get the version of an item
+    public static class Version implements Serializable {
+        public final int requestId;
+        public final Item item;
+        public Version(int requestId, Item item) {
+            this.requestId = requestId;
+            this.item = item;
+        }
+    }
+
+    // This class represents a message to update an item
+    public static class UpdateRequest implements Serializable {
+        public final Item item;
+        public UpdateRequest(Item item) {
+            this.item = item;
+        }
+    }
+
+    // this class represents all the information to update an item
+    public static class UpdateVersion implements Serializable {
+        public final int requestId;
+        public final Item item;
+        public UpdateVersion(int requestId, Item item) {
+            this.requestId = requestId;
+            this.item = item;
+        }
+    }
+
+    // This class represents a message to write the new item
+    public static class Write implements Serializable {
+        public final int requestId;
+        public final Item item;
+        public Write(int requestId, Item item) {
+            this.requestId = requestId;
+            this.item = item;
+        }
+    }
+
+    // this class represents all the information written of an item
+    public static class WrittenItemInformation implements Serializable {
+        public final int requestId;
+        public final Item item;
+        public WrittenItemInformation(int requestId, Item item) {
+            this.requestId = requestId;
+            this.item = item;
+        }
+    }
 }

@@ -5,6 +5,12 @@ public class Item {
     String value;
     int version;
 
+    public Item(int _key, String _value){
+        key = _key;
+        value = _value;
+        version = 0;
+    }
+
     public Item(int _key, String _value, int _version){
         key = _key;
         value = _value;
@@ -19,8 +25,10 @@ public class Item {
         value = _value;
     }
 
-    public void setVersion(int _version){
-        version = _version;
+    public void setVersion(int _version){ version = _version; }
+
+    public void updateVersion(){
+        version++;
     }
 
     public int getKey(){
@@ -33,5 +41,14 @@ public class Item {
 
     public int getVersion(){
         return version;
+    }
+
+    @Override
+    public String toString() {
+        return "Item{" +
+                "key=" + key +
+                ", value='" + value + '\'' +
+                ", version=" + version +
+                '}';
     }
 }
