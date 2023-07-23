@@ -4,19 +4,16 @@ import akka.actor.ActorRef;
 import akka.actor.Props;
 
 public class Client extends AbstractActor {
-  private ActorRef coordinator; //the node contacted by a client for a given user request is called coordinator
 
-  public Client(ActorRef _coordinator) {
-    this.coordinator = _coordinator;
-  }
+  public Client() {}
 
   @Override
   public void preStart() {
     System.out.println("client preStart");
   }
 
-  static public Props props(ActorRef _coordinator) {
-    return Props.create(Client.class, () -> new Client(_coordinator));
+  static public Props props() {
+    return Props.create(Client.class, () -> new Client());
   }
 
   // Mapping between the received message types and actor methods
@@ -36,22 +33,30 @@ public class Client extends AbstractActor {
   // Ask the coordinator to get an item
   private void onGet(ClientMessage.Get msg){
     System.out.println("["+this.getSelf().path().name()+"] [onGet] Client");
-    coordinator.tell(new Message.GetRequest(msg.key), this.getSelf());
+    (msg.coordinator).tell(new Message.GetRequest(msg.key), this.getSelf());
   }
 
   private void onGetResult(ClientMessage.GetResult msg){
-    System.out.println("["+this.getSelf().path().name()+"] [onGetResult] Client: " + msg.item);
+    if(msg.result == Result.SUCCESS) {
+      System.out.println("["+this.getSelf().path().name()+"] [onGetResult] Client: " + msg.item);
+    } else {
+      System.out.println("[" + this.getSelf().path().name() + "] [onGetResult] Client: ERROR!");
+    }
   }
 
   // TODO onWriteResponse
   // Ask the coordinator to update an item
   private void onUpdate(ClientMessage.Update msg){
     System.out.println("["+this.getSelf().path().name()+"] [onUpdate] Client");
-    coordinator.tell(new Message.UpdateRequest(msg.item), this.getSelf());
+    (msg.coordinator).tell(new Message.UpdateRequest(msg.item), this.getSelf());
   }
 
   private void onUpdateResult(ClientMessage.UpdateResult msg){
-    System.out.println("["+this.getSelf().path().name()+"] [onUpdateResult] Client: " + msg.item);
+    if(msg.result == Result.SUCCESS) {
+      System.out.println("[" + this.getSelf().path().name() + "] [onUpdateResult] Client: " + msg.item);
+    } else {
+      System.out.println("[" + this.getSelf().path().name() + "] [onUpdateResult] Client: ERROR!");
+    }
   }
 
   /*======================*/

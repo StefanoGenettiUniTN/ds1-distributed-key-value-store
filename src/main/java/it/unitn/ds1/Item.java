@@ -17,6 +17,10 @@ public class Item {
         version = _version;
     }
 
+    public Item(Item that){
+        this(that.getKey(), that.getValue(), that.getVersion());
+    }
+
     public void setKey(int _key){
         key = _key;
     }
@@ -26,10 +30,6 @@ public class Item {
     }
 
     public void setVersion(int _version){ version = _version; }
-
-    public void updateVersion(){
-        version++;
-    }
 
     public int getKey(){
         return key;

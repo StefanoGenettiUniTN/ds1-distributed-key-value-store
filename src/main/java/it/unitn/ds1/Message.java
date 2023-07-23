@@ -69,6 +69,14 @@ public class Message{
     // Message to trigger the print of the list of nodes
     public static class PrintNodeList implements Serializable {}
 
+    // This class represents a timeoutExpiration
+    public static class Timeout implements Serializable {
+        public final int requestId;
+        public Timeout(int requestId) {
+            this.requestId = requestId;
+        }
+    }
+
     // This class represents a message to get an item
     public static class GetRequest implements Serializable {
         public final int key;
@@ -130,16 +138,6 @@ public class Message{
         public final int requestId;
         public final Item item;
         public Write(int requestId, Item item) {
-            this.requestId = requestId;
-            this.item = item;
-        }
-    }
-
-    // this class represents all the information written of an item
-    public static class WrittenItemInformation implements Serializable {
-        public final int requestId;
-        public final Item item;
-        public WrittenItemInformation(int requestId, Item item) {
             this.requestId = requestId;
             this.item = item;
         }

@@ -10,7 +10,7 @@ public class Main {
   final static int N = 1; // degree of replication
   final static int R = 1; // read quorum
   final static int W = 1; // write quorum
-  final static int T = 1; // timeout
+  final static int T = 0; // timeout
 
   public static void main(String[] args) {
     // Create the actor system
@@ -72,29 +72,29 @@ public class Main {
     //...end step 1
 
     // 2. Create client node c1
-    ActorRef c1 = system.actorOf(Client.props(n1),"c1");
-    ActorRef c2 = system.actorOf(Client.props(n1),"c2");
+    ActorRef c1 = system.actorOf(Client.props(),"c1");
+    ActorRef c2 = system.actorOf(Client.props(),"c2");
 
-    c1.tell(new ClientMessage.Update(new Item(35, "Ciao")), ActorRef.noSender());
-    c2.tell(new ClientMessage.Update(new Item(7, "Come")), ActorRef.noSender());
-    c1.tell(new ClientMessage.Update(new Item(58, "Va")), ActorRef.noSender());
-
-    try { Thread.sleep(1000); }
-    catch (InterruptedException e) { e.printStackTrace(); }
-
-    c1.tell(new ClientMessage.Get(7), ActorRef.noSender());
-    c1.tell(new ClientMessage.Get(35), ActorRef.noSender());
-    c1.tell(new ClientMessage.Get(58), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(35, "Ciao"), n1), ActorRef.noSender());
+    c2.tell(new ClientMessage.Update(new Item(7, "Come"), n2), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(58, "Va"), n3), ActorRef.noSender());
 
     try { Thread.sleep(1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
-    c1.tell(new ClientMessage.Update(new Item(58, "CAMBIATO")), ActorRef.noSender());
+    c1.tell(new ClientMessage.Get(7, n1), ActorRef.noSender());
+    c1.tell(new ClientMessage.Get(35, n1), ActorRef.noSender());
+    c1.tell(new ClientMessage.Get(58, n1), ActorRef.noSender());
 
     try { Thread.sleep(1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
-    c2.tell(new ClientMessage.Get(58), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(58, "CAMBIATO"), n1), ActorRef.noSender());
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    c2.tell(new ClientMessage.Get(58, n1), ActorRef.noSender());
     //...end step 2
 
     try {

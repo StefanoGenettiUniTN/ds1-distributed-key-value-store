@@ -6,6 +6,9 @@ import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
 import akka.actor.Props;
 
+import java.util.concurrent.TimeUnit;
+import scala.concurrent.duration.Duration;
+
 public class Node extends AbstractActor {
   private final int key;                  // node key
   private int counterRequest;
@@ -48,9 +51,9 @@ public class Node extends AbstractActor {
       .match(Message.UpdateRequest.class, this::onUpdateRequest)
       .match(Message.UpdateVersion.class, this::onUpdateVersion)
       .match(Message.Write.class, this::onWrite)
-      .match(Message.WrittenItemInformation.class, this::onWrittenItemInformation)
       .match(Message.AnnouncePresence.class, this::onAnnouncePresence)
       .match(Message.CrashMsg.class, this::onCrashMsg)
+      .match(Message.Timeout.class, this::onTimeout)
       .build();
   }
 
@@ -202,9 +205,13 @@ public class Node extends AbstractActor {
   // TODO: onGet(key)
   // TODO: onUpdate(key, value)
 
+
+
+  /*----------GET RESPONSIBLE NODES FOR AN ITEM----------*/
+
   private Set<Integer> getResponsibleNode(int key){
-    Set<Integer> responsibleNode = new TreeSet<>();
-    int n = 1;
+    Set<Integer> responsibleNode = new HashSet<>();
+    int n = Main.N;
 
     for (Map.Entry<Integer, ActorRef> entry : peers.entrySet()) {
       if(n > 0 && key < entry.getKey()){
@@ -231,20 +238,32 @@ public class Node extends AbstractActor {
     return responsibleNode;
   }
 
+  /*----------END GET RESPONSIBLE NODES FOR AN ITEM----------*/
+
+  /*----------GET----------*/
+
   // Coordinator manage get request
   private void onGetRequest(Message.GetRequest msg){
     int key = msg.key;
     System.out.println("["+this.getSelf().path().name()+"] [onGet] Coordinator");
 
     counterRequest++;
-    this.requests.put(counterRequest, new Request(this.getSender(), new Item(key, "")));
+    this.requests.put(counterRequest, new Request(this.getSender(), new Item(key, ""), Type.GET));
 
     for(int node : getResponsibleNode(key)) {
       (peers.get(node)).tell(new Message.Read(counterRequest, key), this.getSelf());
     }
+
+    //Timeout
+    getContext().system().scheduler().scheduleOnce(
+            Duration.create(Main.T, TimeUnit.SECONDS),
+            this.getSelf(),
+            new Message.Timeout(counterRequest), // the message to send,
+            getContext().system().dispatcher(), this.getSelf()
+    );
   }
 
-  //Return information of an item to the coordinato
+  //Return information of an item to the coordinator
   private void onRead(Message.Read msg){
     int item_key = msg.key;
     Item item = this.items.get(item_key);
@@ -254,62 +273,87 @@ public class Node extends AbstractActor {
 
   //Return information to the client
   private void onReadItemInformation(Message.ReadItemInformation msg){
-    System.out.println("["+this.getSelf().path().name()+"] [onItemInformation] Owner");
+    System.out.println("["+this.getSelf().path().name()+"] [onReadItemInformation] Owner");
+
+    //GESTIRE LA VERSIONE
+
     Request req = this.requests.remove(msg.requestId);
-    req.getClient().tell(new ClientMessage.GetResult(msg.item), ActorRef.noSender());
+    req.getClient().tell(new ClientMessage.GetResult(Result.SUCCESS, msg.item), ActorRef.noSender());
   }
 
+  /*----------END GET----------*/
+
+  /*----------UPDATE----------*/
+
+  private void onTimeout(Message.Timeout msg){
+    if(this.requests.containsKey(msg.requestId) == true){
+      Request req = this.requests.remove(msg.requestId);
+      if(req.getType() == Type.GET) {
+        req.getClient().tell(new ClientMessage.GetResult(Result.ERROR, null), ActorRef.noSender());
+      } else {
+        req.getClient().tell(new ClientMessage.UpdateResult(Result.ERROR, null), ActorRef.noSender());
+      }
+    }
+  }
+
+  // Coordinator retrieve last version
+  private void onUpdateRequest(Message.UpdateRequest msg){
+    Item item = new Item(msg.item);
+    System.out.println("["+this.getSelf().path().name()+"] [onUpdate] Coordinator");
+
+    this.counterRequest++;
+    this.requests.put(counterRequest, new Request(this.getSender(), item, Type.UPDATE));
+
+    for(int node : getResponsibleNode(item.key)) {
+      (peers.get(node)).tell(new Message.Version(counterRequest, item), this.getSelf());
+    }
+
+    //Timeout
+    getContext().system().scheduler().scheduleOnce(
+          Duration.create(Main.T, TimeUnit.SECONDS),
+          this.getSelf(),
+          new Message.Timeout(counterRequest), // the message to send,
+          getContext().system().dispatcher(), this.getSelf()
+      );
+  }
 
   //Return version of an item
   private void onVersion(Message.Version msg){
-    Item item = msg.item;
+    Item item = new Item(msg.item);
     System.out.println("["+this.getSelf().path().name()+"] [onVersion] Owner");
     if(this.items.get(item.getKey()) != null) {
       item.setVersion((this.items.get(item.getKey())).getVersion());
     }
 
-    this.getSender().tell(new Message.UpdateVersion(msg.requestId, item), ActorRef.noSender());
-  }
-
-  // Coordinator retrieve last version
-  private void onUpdateRequest(Message.UpdateRequest msg){
-    Item item = msg.item;
-    System.out.println("["+this.getSelf().path().name()+"] [onUpdate] Coordinator");
-
-    this.counterRequest++;
-    this.requests.put(counterRequest, new Request(this.getSender(), item));
-
-    for(int node : getResponsibleNode(item.key)) {
-      (peers.get(node)).tell(new Message.Version(counterRequest, item), this.getSelf());
-    }
+    //this.getSender().tell(new Message.UpdateVersion(msg.requestId, item), ActorRef.noSender());
+    this.getSender().tell(new Message.UpdateVersion(msg.requestId, item), this.getSelf());
   }
 
   private void onUpdateVersion(Message.UpdateVersion msg){
-    Item item = msg.item;
-    item.updateVersion();
+    Item item = new Item(msg.item);
     System.out.println("["+this.getSelf().path().name()+"] [onUpdateVersion] Coordinator");
+
+    // TO DO: check W
+    item.setVersion(item.getVersion() + 1); //
 
     for(int node : getResponsibleNode(item.getKey())) {
       (peers.get(node)).tell(new Message.Write(msg.requestId, item), this.getSelf());
     }
+
+    System.out.println("Eccolo");
+    Request req = this.requests.remove(msg.requestId);
+    // DA SISTEMARE LO RIMANDO PER OGNI NODO
+    req.getClient().tell(new ClientMessage.UpdateResult(Result.SUCCESS, msg.item), ActorRef.noSender());
   }
 
   //Update item and send element to the coordinator
   private void onWrite(Message.Write msg){
-    Item item = msg.item;
+    Item item = new Item(msg.item);
     this.items.put(item.getKey(), item);
-    System.out.println("["+this.getSelf().path().name()+"] [onItemInformation] Owner: " + key + " ITEM: " + item);
-    this.getSender().tell(new Message.WrittenItemInformation(msg.requestId, item), ActorRef.noSender());
+    System.out.println("["+this.getSelf().path().name()+"] [onWriteInformation] Owner: " + key + " ITEM: " + item);
   }
 
-  //Return information to the client
-  private void onWrittenItemInformation(Message.WrittenItemInformation msg){
-    System.out.println("["+this.getSelf().path().name()+"] [onItemInformation] Owner");
-    Request req = this.requests.remove(msg.requestId);
-    req.getClient().tell(new ClientMessage.UpdateResult(msg.item), ActorRef.noSender());
-  }
-
-
+  /*----------END UPDATE----------*/
 
   // Print the list of nodes
   private void onPrintNodeList(Message.PrintNodeList msg){
