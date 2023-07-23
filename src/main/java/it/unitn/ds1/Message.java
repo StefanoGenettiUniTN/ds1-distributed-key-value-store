@@ -31,6 +31,7 @@ public class Message{
     }
 
     // Bootstrap node receives this message from the node which is joining the system
+    // or recovering from crash
     public static class ReqActiveNodeList implements Serializable{}
 
     // Bootstrap node sends current list of active nodes to the node which
@@ -52,6 +53,18 @@ public class Message{
             this.key = _key;
         }
     }
+
+    // Recovery message
+    public static class RecoveryMsg implements Serializable{
+        public final ActorRef bootstrappingPeer;
+
+        public RecoveryMsg(ActorRef _bootstrappingPeer){
+            this.bootstrappingPeer = _bootstrappingPeer;
+        }
+    }
+
+    // Ask the node to crash
+    public static class CrashMsg implements Serializable {}
 
     // Message to trigger the print of the list of nodes
     public static class PrintNodeList implements Serializable {}

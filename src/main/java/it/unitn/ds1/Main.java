@@ -1,5 +1,8 @@
 package it.unitn.ds1;
 import java.io.IOException;
+import java.rmi.activation.Activator;
+
+import akka.actor.Actor;
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 
@@ -31,18 +34,24 @@ public class Main {
     ActorRef n2 = system.actorOf(Node.props(30),"n2");
 
     //// send to n2 the message to allow it joininig the network
-    n2.tell(new Message.JoinMsg(30, n1), n2);
+    n2.tell(new Message.JoinMsg(30, n1), ActorRef.noSender());
 
     try { Thread.sleep(1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     n2.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
 
+    ///// node n2 crashes
+    n2.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
     //// create node n3
     ActorRef n3 = system.actorOf(Node.props(40),"n3");
 
     //// send to n3 the message to allow it joininig the network
-    n3.tell(new Message.JoinMsg(40, n1), n3);
+    n3.tell(new Message.JoinMsg(40, n1), ActorRef.noSender());
 
     try { Thread.sleep(1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
@@ -50,6 +59,14 @@ public class Main {
     n3.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
 
     n1.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+
+    n2.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+
+    //// node n2 recovery
+    n2.tell(new Message.RecoveryMsg(n1), Actor.noSender());
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
 
     n2.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
 

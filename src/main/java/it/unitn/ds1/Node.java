@@ -39,6 +39,18 @@ public class Node extends AbstractActor {
       .match(Message.ReqActiveNodeList.class, this::onReqActiveNodeList)
       .match(Message.ResActiveNodeList.class, this::onResActiveNodeList)
       .match(Message.AnnouncePresence.class, this::onAnnouncePresence)
+      .match(Message.CrashMsg.class, this::onCrashMsg)
+      .build();
+  }
+
+  // Crash state behaviour
+  final AbstractActor.Receive crashed() {
+    return receiveBuilder()
+      .match(Message.RecoveryMsg.class, this::onRecoveryMsg)
+      .match(Message.ResActiveNodeList.class, this::onResActiveNodeList_recovery)
+      .matchAny(msg -> {
+        System.out.println(getSelf().path().name() + " ignoring " + msg.getClass().getSimpleName() + " (crashed)");
+      })
       .build();
   }
 
@@ -119,6 +131,62 @@ public class Node extends AbstractActor {
     // add the new node to the current list of active nodes
     this.peers.put(msg_key, this.getSender());
   }
+
+  /*----------CRASH----------*/
+  private void crash() {
+    getContext().become(crashed());
+  }
+
+  // Receive CrashMsg and go to crash state
+  private void onCrashMsg(Message.CrashMsg msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onCrashMsg]");
+    this.crash();
+  }
+
+  /*----------END CRASH----------*/
+
+  /*----------RECOVERY----------*/
+  private void recover(){
+    getContext().become(createReceive());
+  }
+
+  // When a crashed node is started again, it:
+  // i.   requests the current set of nodes from a node specified in the recovery request;
+  // ii.  discard those items that are no longer under its responsability;
+  // iii. obtain the items that are now under its responsability
+  private void onRecoveryMsg(Message.RecoveryMsg msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onRecoveryMsg]");
+
+    // retrive message data
+    ActorRef bootstrappingPeer = msg.bootstrappingPeer;
+
+    // clear current local knowledge of nodes currently active in the network
+    this.peers.clear();
+
+    // i. requests the current set of nodes from a node specified in the recovery request;
+    bootstrappingPeer.tell(new Message.ReqActiveNodeList(), this.getSelf());
+  }
+
+  // The bootstrapping node send the current list of the active nodes
+  // to the node which is recovering from crash
+  private void onResActiveNodeList_recovery(Message.ResActiveNodeList msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList_recovery]");
+
+    //// TODO: riflettere se si può riciclare il onResActiveNodeList quando non conterrà più l'announce e onResActiveNodeList_recovery non conterrà più il cambiamento di stato a non crash
+
+    // retrive message data and initialize the list of peers
+    for (Map.Entry<Integer, ActorRef> pair : msg.activeNodes.entrySet()) {
+      this.peers.put(pair.getKey(), pair.getValue());
+    }
+
+    // the node add itself to the list of nodes currently active
+    this.peers.put(this.key, this.getSelf());
+
+    // exit crash state 
+    this.recover();
+  }
+
+  /*----------END RECOVERY----------*/
 
   // TODO: onGet(key)
 
