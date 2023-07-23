@@ -1,9 +1,11 @@
 package it.unitn.ds1;
 
 import java.util.*;
+import java.util.TreeMap;
 
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
+import akka.actor.ActorRefFactory;
 import akka.actor.Props;
 
 public class Node extends AbstractActor {
@@ -84,6 +86,8 @@ public class Node extends AbstractActor {
     this.peers.put(this.key, this.getSelf());
   }
 
+  /*----------JOIN----------*/
+
   // Node receive the JoinMsg from Main
   private void onJoinMsg(Message.JoinMsg msg){
     System.out.println("["+this.getSelf().path().name()+"] [onJoinMsg]");
@@ -119,6 +123,11 @@ public class Node extends AbstractActor {
       this.peers.put(pair.getKey(), pair.getValue());
     }
 
+    // get clocwise neighbor which has to be queried to request data items 
+    // the joining node is responsible for
+    ActorRef clockwiseNeighbor = this.getClockwiseNeighbor();
+    System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList] My clockwise neighbour is: "+clockwiseNeighbor);
+    
     // the node add itself to the list of nodes currently active
     this.peers.put(this.key, this.getSelf());
 
@@ -142,6 +151,8 @@ public class Node extends AbstractActor {
     // add the new node to the current list of active nodes
     this.peers.put(msg_key, this.getSender());
   }
+
+  /*----------END JOIN----------*/
 
   /*----------CRASH----------*/
   private void crash() {
@@ -202,6 +213,8 @@ public class Node extends AbstractActor {
   // TODO: onGet(key)
   // TODO: onUpdate(key, value)
 
+  // given a key, get the set of actors which are responsible
+  // for that item according to N
   private Set<Integer> getResponsibleNode(int key){
     Set<Integer> responsibleNode = new TreeSet<>();
     int n = 1;
@@ -229,6 +242,18 @@ public class Node extends AbstractActor {
     }
 
     return responsibleNode;
+  }
+
+  // get clockwise neighbor
+  private ActorRef getClockwiseNeighbor(){
+
+    for (Map.Entry<Integer, ActorRef> entry : this.peers.entrySet()) {
+      if(this.key < entry.getKey()){
+        return entry.getValue();
+      }
+    }
+
+    return ((TreeMap<Integer, ActorRef>) this.peers).firstEntry().getValue();
   }
 
   // Coordinator manage get request
