@@ -5,7 +5,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.TreeMap;
+import java.util.Set;
 
 public class Message{
     // This class represents a message our actor will receive
@@ -41,6 +43,22 @@ public class Message{
         
         public ResActiveNodeList(Map<Integer, ActorRef> _activeNodes){
             this.activeNodes = Collections.unmodifiableMap(new TreeMap<>(_activeNodes));
+        }
+    }
+
+    // The joining node with key=_key should request data items it is responsible for
+    public static class ReqDataItemsResponsibleFor implements Serializable{
+        public final int key;
+        public ReqDataItemsResponsibleFor(int _key){
+            this.key = _key;
+        }
+    }
+
+    // The successor of the joining node sends the data items the new node is responsible for
+    public static class ResDataItemsResponsibleFor implements Serializable{
+        public final Set<Item> resSet;
+        public ResDataItemsResponsibleFor(Set<Item> _resSet){
+            this.resSet = Collections.unmodifiableSet(new HashSet<>(_resSet));
         }
     }
 

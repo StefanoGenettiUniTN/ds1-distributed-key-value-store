@@ -1,7 +1,6 @@
 package it.unitn.ds1;
 
 import java.util.*;
-import java.util.TreeMap;
 
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
@@ -14,7 +13,6 @@ public class Node extends AbstractActor {
   private final Map<Integer, ActorRef> peers;   // peers[K] points to the node in the group with key K
   private final Map<Integer, Item> items;       // the set of data item the node is currently responsible for
   private final Map<Integer, Request> requests; // Lists of the requests
-
 
   public Node(int _key){
     this.key = _key;
@@ -51,6 +49,8 @@ public class Node extends AbstractActor {
       .match(Message.UpdateVersion.class, this::onUpdateVersion)
       .match(Message.Write.class, this::onWrite)
       .match(Message.WrittenItemInformation.class, this::onWrittenItemInformation)
+      .match(Message.ReqDataItemsResponsibleFor.class, this::onReqDataItemsResponsibleFor)
+      .match(Message.ResDataItemsResponsibleFor.class, this::onResDataItemsResponsibleFor)
       .match(Message.AnnouncePresence.class, this::onAnnouncePresence)
       .match(Message.CrashMsg.class, this::onCrashMsg)
       .build();
@@ -127,6 +127,10 @@ public class Node extends AbstractActor {
     // the joining node is responsible for
     ActorRef clockwiseNeighbor = this.getClockwiseNeighbor();
     System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList] My clockwise neighbour is: "+clockwiseNeighbor);
+
+    // request data items the joining node is responsible for from its clockwise neighbor (which holds all items it needs)
+    Message.ReqDataItemsResponsibleFor clockwiseNeighborRequest = new Message.ReqDataItemsResponsibleFor(this.key);
+    clockwiseNeighbor.tell(clockwiseNeighborRequest, this.getSelf());
     
     // the node add itself to the list of nodes currently active
     this.peers.put(this.key, this.getSelf());
@@ -138,6 +142,57 @@ public class Node extends AbstractActor {
         p.tell(announcePresence, this.getSelf());
       }
     });
+  }
+
+  // receive this request from a joining node "jn" which is requesting to its clockwise neighbor
+  // the data items "jn" should be responsible for.
+  // The message msg contains the key of the joining node
+  private void onReqDataItemsResponsibleFor(Message.ReqDataItemsResponsibleFor msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onReqDataItemsResponsibleFor]");
+
+    // retrive message data
+    Integer joiningNodeKey = msg.key;
+
+    // iterate the data item set to find the data items the joining node is responsible for
+    Set<Item> resSet = new HashSet<>();
+    if(joiningNodeKey < this.key){  // example: the node which is joining has key 9 and its successor in the ring has key 15
+
+      for (Map.Entry<Integer, Item> dataItem : this.items.entrySet()) {
+        if(dataItem.getKey() < joiningNodeKey){
+          resSet.add(dataItem.getValue());
+        }else if(dataItem.getKey() > this.key){
+          resSet.add(dataItem.getValue());
+        }
+      }
+
+    }else{  //example: in this case the node which is joining has the currently highest key: the successor of
+            //---------the joining node is the first node in the ring (ie the one with the smallest key) 
+
+      for (Map.Entry<Integer, Item> dataItem : this.items.entrySet()) {
+        if(dataItem.getKey() < joiningNodeKey && dataItem.getKey() > this.key){
+          resSet.add(dataItem.getValue());
+        }
+      }
+
+    }
+
+    // send the list of data item that the joining node is responsible for
+    Message.ResDataItemsResponsibleFor msg_response = new Message.ResDataItemsResponsibleFor(Collections.unmodifiableSet(resSet));
+    this.getSender().tell(msg_response, this.getSelf());
+  }
+
+  // the joining node receives the set of data imtems it is responsible for from its clockwise neighbor
+  private void onResDataItemsResponsibleFor(Message.ResDataItemsResponsibleFor msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor]");
+
+    // retrive message data and add the data items the joining node is responsible for
+    for (Item item : msg.resSet) {
+      this.items.put(item.key, item);
+    }
+    System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor] Now I am responsible for the following data items:"+this.items.values());
+
+    // TODO: perform read operations to ensure that the received items are up to date
+
   }
 
   // Sender of this message is a node which is joining the system.
@@ -245,15 +300,42 @@ public class Node extends AbstractActor {
   }
 
   // get clockwise neighbor
+  // this function is called in the context of a join
+  // request, so the present node is not part of the network yet (TODO: magari facciamo in modo che invece questo metodo sia generico)
   private ActorRef getClockwiseNeighbor(){
 
-    for (Map.Entry<Integer, ActorRef> entry : this.peers.entrySet()) {
+    for(Map.Entry<Integer, ActorRef> entry : this.peers.entrySet()) {
       if(this.key < entry.getKey()){
         return entry.getValue();
       }
     }
 
     return ((TreeMap<Integer, ActorRef>) this.peers).firstEntry().getValue();
+  }
+
+  // get predecessor
+  private ActorRef getPredecessor(){
+    Integer currentNodeKey = -1;
+    Integer prevNodeKey = -1;
+    Integer predecessorNodeKey = -1;
+
+    for(Map.Entry<Integer, ActorRef> entry : this.peers.entrySet()) {
+
+      currentNodeKey = entry.getKey();
+
+      if(currentNodeKey == this.key){
+        if(prevNodeKey!=-1){
+          predecessorNodeKey = prevNodeKey;
+        }else{
+          predecessorNodeKey = ((TreeMap<Integer, ActorRef>) this.peers).lastEntry().getKey();
+        }
+        break;
+      }
+
+      prevNodeKey = currentNodeKey;
+    }
+
+    return this.peers.get(predecessorNodeKey);
   }
 
   // Coordinator manage get request
@@ -333,8 +415,6 @@ public class Node extends AbstractActor {
     Request req = this.requests.remove(msg.requestId);
     req.getClient().tell(new ClientMessage.UpdateResult(msg.item), ActorRef.noSender());
   }
-
-
 
   // Print the list of nodes
   private void onPrintNodeList(Message.PrintNodeList msg){
