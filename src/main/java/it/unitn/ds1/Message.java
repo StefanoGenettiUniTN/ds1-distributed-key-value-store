@@ -69,6 +69,9 @@ public class Message{
     // Message to trigger the print of the list of nodes
     public static class PrintNodeList implements Serializable {}
 
+    // Message to trigger the print of the list of items
+    public static class PrintItemList implements Serializable {}
+
     // This class represents a timeoutExpiration
     public static class Timeout implements Serializable {
         public final int requestId;

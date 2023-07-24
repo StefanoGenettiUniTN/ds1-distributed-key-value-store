@@ -11,13 +11,21 @@ import scala.concurrent.duration.Duration;
 
 public class Node extends AbstractActor {
   private final int key;                  // node key
+  private final int N;
+  private final int R;
+  private final int W;
+  private final int T;
   private int counterRequest;
   private final Map<Integer, ActorRef> peers;   // peers[K] points to the node in the group with key K
   private final Map<Integer, Item> items;       // the set of data item the node is currently responsible for
   private final Map<Integer, Request> requests; // Lists of the requests
 
 
-  public Node(int _key){
+  public Node(int _key, int n, int r, int w, int t){
+    this.N = n;
+    this.R = r;
+    this.W = w;
+    this.T = t;
     this.key = _key;
     this.peers = new TreeMap<>();
     this.items = new HashMap<>();
@@ -30,8 +38,8 @@ public class Node extends AbstractActor {
     System.out.println("["+this.getSelf().path().name()+"] [preStart] Node key: "+this.key);
   }
 
-  static public Props props(int _key) {
-    return Props.create(Node.class, () -> new Node(_key));
+  static public Props props(int _key, int n, int r, int w, int t) {
+    return Props.create(Node.class, () -> new Node(_key, n, r, w, t));
   }
 
   // Mapping between the received message types and actor methods
@@ -40,6 +48,7 @@ public class Node extends AbstractActor {
     return receiveBuilder()
       .match(Message.Hello.class, this::onHello)
       .match(Message.PrintNodeList.class, this::onPrintNodeList)
+      .match(Message.PrintItemList.class, this::onPrintItemList)
       .match(Message.InitSystem.class, this::onInit)
       .match(Message.JoinMsg.class, this::onJoinMsg)
       .match(Message.ReqActiveNodeList.class, this::onReqActiveNodeList)
@@ -211,7 +220,7 @@ public class Node extends AbstractActor {
 
   private Set<Integer> getResponsibleNode(int key){
     Set<Integer> responsibleNode = new HashSet<>();
-    int n = Main.N;
+    int n = this.N;
 
     for (Map.Entry<Integer, ActorRef> entry : peers.entrySet()) {
       if(n > 0 && key < entry.getKey()){
@@ -267,18 +276,33 @@ public class Node extends AbstractActor {
   private void onRead(Message.Read msg){
     int item_key = msg.key;
     Item item = this.items.get(item_key);
-    System.out.println("["+this.getSelf().path().name()+"] [onRead] Owner: " + key + " ITEM: " + item);
-    this.getSender().tell(new Message.ReadItemInformation(msg.requestId, item), ActorRef.noSender());
+    if(item != null) {
+      System.out.println("[" + this.getSelf().path().name() + "] [onRead] Owner: " + key + " ITEM: " + item);
+      this.getSender().tell(new Message.ReadItemInformation(msg.requestId, item), ActorRef.noSender());
+    }
   }
 
   //Return information to the client
   private void onReadItemInformation(Message.ReadItemInformation msg){
     System.out.println("["+this.getSelf().path().name()+"] [onReadItemInformation] Owner");
 
-    //GESTIRE LA VERSIONE
-
     Request req = this.requests.remove(msg.requestId);
-    req.getClient().tell(new ClientMessage.GetResult(Result.SUCCESS, msg.item), ActorRef.noSender());
+
+    if(req != null) {
+      req.setCounter(req.getCounter() + 1);
+
+      int nR = req.getCounter();
+
+      if(nR < this.R){
+          Item item = req.getItem();
+          if(msg.item.getVersion() > item.getVersion()){
+            item.setVersion(msg.item.getVersion());
+            item.setValue(msg.item.getValue());
+          }
+      } else if(nR == this.R) {
+        req.getClient().tell(new ClientMessage.GetResult(Result.SUCCESS, msg.item), ActorRef.noSender());
+      }
+    }
   }
 
   /*----------END GET----------*/
@@ -333,17 +357,28 @@ public class Node extends AbstractActor {
     Item item = new Item(msg.item);
     System.out.println("["+this.getSelf().path().name()+"] [onUpdateVersion] Coordinator");
 
-    // TO DO: check W
-    item.setVersion(item.getVersion() + 1); //
+    Request req = this.requests.get(msg.requestId);
 
-    for(int node : getResponsibleNode(item.getKey())) {
-      (peers.get(node)).tell(new Message.Write(msg.requestId, item), this.getSelf());
+    if(req != null) {
+      req.setCounter(req.getCounter() + 1);
+      Item itemReq = req.getItem();
+      int nW = req.getCounter();
+
+
+      if(nW < this.W){
+        if(msg.item.getVersion() > itemReq.getVersion()){
+          itemReq.setVersion(msg.item.getVersion());
+        }
+      } else if(nW == this.W) {
+        itemReq.setVersion(itemReq.getVersion() + 1);
+        for (int node : getResponsibleNode(item.getKey())) {
+          (peers.get(node)).tell(new Message.Write(msg.requestId, itemReq), this.getSelf());
+        }
+
+        this.requests.remove(msg.requestId);
+        req.getClient().tell(new ClientMessage.UpdateResult(Result.SUCCESS, itemReq), ActorRef.noSender());
+      }
     }
-
-    System.out.println("Eccolo");
-    Request req = this.requests.remove(msg.requestId);
-    // DA SISTEMARE LO RIMANDO PER OGNI NODO
-    req.getClient().tell(new ClientMessage.UpdateResult(Result.SUCCESS, msg.item), ActorRef.noSender());
   }
 
   //Update item and send element to the coordinator
@@ -359,6 +394,11 @@ public class Node extends AbstractActor {
   private void onPrintNodeList(Message.PrintNodeList msg){
     System.out.println("["+this.getSelf().path().name()+"] [onPrintNodeList]");
     System.out.println(this.peers);
+  }
+
+  // Print the list of Item
+  private void onPrintItemList(Message.PrintItemList msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onPrintItemList]: " + this.items);
   }
 
   /*======================*/
