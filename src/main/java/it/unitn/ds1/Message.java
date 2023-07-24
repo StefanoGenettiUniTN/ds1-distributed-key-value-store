@@ -62,6 +62,23 @@ public class Message{
         }
     }
 
+    // The joining node should perform read operations to ensure that its items are up to date
+    public static class JoinReadOperationReq implements Serializable{
+        public final Set<Item> requestItemSet;
+        public JoinReadOperationReq(Set<Item> _requestItemSet){
+            this.requestItemSet = Collections.unmodifiableSet(new HashSet<>(_requestItemSet));
+        }
+    }
+
+    // This message is sent by nodes to the node which is joining the system. The content of the
+    // message is the set of updated items that the new joining node is responsible for.
+    public static class JoinReadOperationRes implements Serializable{
+        public final Set<Item> responseItemSet;
+        public JoinReadOperationRes(Set<Item> _responseItemSet){
+            this.responseItemSet = Collections.unmodifiableSet(new HashSet<>(_responseItemSet));
+        }
+    }
+
     // The node which is joining the network sends this message to
     // announce its presence to every node in the system
     public static class AnnouncePresence implements Serializable{
