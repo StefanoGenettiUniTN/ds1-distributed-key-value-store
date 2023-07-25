@@ -70,6 +70,8 @@ public class Node extends AbstractActor {
       .match(Message.JoinReadOperationReq.class, this::onJoinReadOperationReq)
       .match(Message.JoinReadOperationRes.class, this::onJoinReadOperationRes)
       .match(Message.AnnouncePresence.class, this::onAnnouncePresence)
+      .match(Message.LeaveMsg.class, this::onLeaveMsg)
+      .match(Message.AnnounceDeparture.class, this::onAnnounceDeparture)
       .match(Message.CrashMsg.class, this::onCrashMsg)
       .match(Message.Timeout.class, this::onTimeout)
       .build();
@@ -365,6 +367,68 @@ public class Node extends AbstractActor {
   }
 
   /*----------END JOIN----------*/
+
+  /*LEAVE*/
+
+  // a node receives LeaveMsg from main that requests the node to leave
+  private void onLeaveMsg(Message.LeaveMsg msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onLeaveMsg]"); 
+    
+    // remove the present node from the list of active nodes
+    this.peers.remove(this.key);
+
+    HashMap<Integer, HashSet<Item>> responsibleNode = new HashMap<>(); // responsibleNode[k] :: list of item keys the node k is
+                                                                          // responsible for after the departure of the present node
+    this.peers.keySet().forEach((peerKey) -> {responsibleNode.put(peerKey, new HashSet<>());});                                                                            
+    
+    for(Integer itemKey : this.items.keySet()){
+      Set<Integer> responsibleNodeKeys = this.getResponsibleNode(itemKey);
+      responsibleNodeKeys.forEach((respNodeKey) -> {
+        HashSet<Item> respNodeSet = responsibleNode.get(respNodeKey);
+        respNodeSet.add(new Item(this.items.get(itemKey).key, this.items.get(itemKey).value, this.items.get(itemKey).version));
+      });
+    }
+
+    // the node announces to every other node that it is leaving
+    // the node passes its data items to the nodes that become responsible for them after its departure
+    this.peers.forEach((k, p) -> {
+      p.tell(new Message.AnnounceDeparture(this.key, Collections.unmodifiableSet(responsibleNode.get(k))), this.getSelf());
+    });
+
+    // remove all the peers since the node is no more part of the ring
+    this.peers.clear();
+
+    // remove all the data items, since the present node is no more responsible for them
+    this.items.clear();
+  }
+
+  // receive this message from a node which is leaving the network
+  // Consequently I remove it from the list of 
+  private void onAnnounceDeparture(Message.AnnounceDeparture msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onAnnounceDeparture]");
+
+    // retrive message data
+    Integer leavingNodeKey = msg.key;
+
+    // remove the node which is leaving from the ring
+    this.peers.remove(leavingNodeKey);
+
+    // add data items of which the present node is responsible for after the departure of the leaving node
+    for(Item item : msg.keyItemSet){
+      // the present node was not responsible for this item before
+      // OR
+      // the node which is leaving had a higher version of the item
+      if(!this.items.containsKey(item.key) || this.items.get(item.getKey()).getVersion() < item.getVersion()){
+        Item updatedItem = new Item(  item.key,
+                                      item.getValue(),
+                                      item.getVersion());
+        this.items.put(updatedItem.getKey(), updatedItem);
+      }
+    }
+
+  }
+
+  /*END LEAVE*/
 
   /*----------CRASH----------*/
   private void crash() {

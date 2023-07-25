@@ -91,6 +91,20 @@ public class Message{
         }
     }
 
+    // The main requests a node to leave
+    public static class LeaveMsg implements Serializable{}
+    
+    // The node which is leaving announce its departure with this message
+    public static class AnnounceDeparture implements Serializable{
+        public final int key;
+        public final Set<Item> keyItemSet;   // the node which is leaving passes these data items to the nodes that become responsible for them after its departure
+
+        public AnnounceDeparture(int _key, Set<Item> _keyItemSet){
+            this.key = _key;
+            this.keyItemSet = Collections.unmodifiableSet(new HashSet<>(_keyItemSet));
+        }
+    }
+
     // Recovery message
     public static class RecoveryMsg implements Serializable{
         public final ActorRef bootstrappingPeer;

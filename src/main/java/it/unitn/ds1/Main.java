@@ -123,6 +123,7 @@ public class Main {
     // ...end join
 
     // print item set of the nodes
+    
     try { Thread.sleep(1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
@@ -133,6 +134,55 @@ public class Main {
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
 
     // ...end print item set of the nodes
+
+    // leaving
+    
+    try { Thread.sleep(2000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// leave n1
+    n1.tell(new Message.LeaveMsg(), ActorRef.noSender());
+
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n2.tell(new Message.PrintItemList(), ActorRef.noSender());
+    n3.tell(new Message.PrintItemList(), ActorRef.noSender());
+    n4.tell(new Message.PrintItemList(), ActorRef.noSender());
+    n5.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    //// leave n2
+    n2.tell(new Message.LeaveMsg(), ActorRef.noSender());
+
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n3.tell(new Message.PrintItemList(), ActorRef.noSender());
+    n4.tell(new Message.PrintItemList(), ActorRef.noSender());
+    n5.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    //// leave n3
+    n3.tell(new Message.LeaveMsg(), ActorRef.noSender());
+
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n4.tell(new Message.PrintItemList(), ActorRef.noSender());
+    n5.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    //// leave n4
+    n4.tell(new Message.LeaveMsg(), ActorRef.noSender());
+
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n5.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    // ... end leaving
 
     try {
       System.out.println(">>> Press ENTER to exit <<<");
