@@ -247,7 +247,8 @@ public class Node extends AbstractActor {
       this.peers.put(this.key, this.getSelf());
 
       // the node can finally announce its presence to every node in the system
-      Message.AnnouncePresence announcePresence = new Message.AnnouncePresence(this.key);
+      Set<Integer> announcePresenceKeyItemSet = new HashSet<>(this.items.keySet());
+      Message.AnnouncePresence announcePresence = new Message.AnnouncePresence(this.key, Collections.unmodifiableSet(announcePresenceKeyItemSet));
       this.peers.forEach((k, p) -> {
         if(!p.equals(this.getSelf())){
           p.tell(announcePresence, this.getSelf());
@@ -309,7 +310,8 @@ public class Node extends AbstractActor {
       this.peers.put(this.key, this.getSelf());
 
       // the node can finally announce its presence to every node in the system
-      Message.AnnouncePresence announcePresence = new Message.AnnouncePresence(this.key);
+      Set<Integer> announcePresenceKeyItemSet = new HashSet<>(this.items.keySet());
+      Message.AnnouncePresence announcePresence = new Message.AnnouncePresence(this.key, Collections.unmodifiableSet(announcePresenceKeyItemSet));
       this.peers.forEach((k, p) -> {
         if(!p.equals(this.getSelf())){
           p.tell(announcePresence, this.getSelf());
@@ -326,9 +328,23 @@ public class Node extends AbstractActor {
 
     // retrive message data
     int msg_key = msg.key;  // the key of the new node which is asking to join the system
+    Set<Integer> msg_keyItemSet = new HashSet<>();
+    msg_keyItemSet.addAll(msg.keyItemSet);  // TODO: riflettere se è giusto così dal punto di vista dell'immutable final e quelle cose la, magari visto che è solo lettura, posso anche leggere dal messaggio simplicemente
 
     // add the new node to the current list of active nodes
     this.peers.put(msg_key, this.getSender());
+
+    // for each item in keyItemSet which is also in this.items, check if
+    // the present node is still responsible for. Consequently, remove the data items
+    // the present node is no longer responsible for. 
+    for(Integer itemKey : msg_keyItemSet){
+      if(this.items.keySet().contains(itemKey)){
+        if(!this.getResponsibleNode(itemKey).contains(this.key)){  // the present node is no more responsible for this item
+          this.items.remove(itemKey); // remove the item
+        }
+      }
+    }
+
   }
 
   /*----------END JOIN----------*/

@@ -83,9 +83,11 @@ public class Message{
     // announce its presence to every node in the system
     public static class AnnouncePresence implements Serializable{
         public final int key;
+        public final Set<Integer> keyItemSet;
 
-        public AnnouncePresence(int _key){
+        public AnnouncePresence(int _key, Set<Integer> _keyItemSet){
             this.key = _key;
+            this.keyItemSet = Collections.unmodifiableSet(new HashSet<>(_keyItemSet));
         }
     }
 
