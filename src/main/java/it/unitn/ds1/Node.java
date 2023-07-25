@@ -4,7 +4,6 @@ import java.util.*;
 
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
-import akka.actor.ActorRefFactory;
 import akka.actor.Props;
 
 public class Node extends AbstractActor {
