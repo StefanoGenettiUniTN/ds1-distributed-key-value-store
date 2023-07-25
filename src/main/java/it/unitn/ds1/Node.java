@@ -82,6 +82,7 @@ public class Node extends AbstractActor {
     return receiveBuilder()
       .match(Message.RecoveryMsg.class, this::onRecoveryMsg)
       .match(Message.ResActiveNodeList.class, this::onResActiveNodeList_recovery)
+      .match(Message.ResDataItemsResponsibleFor.class, this::onResDataItemsResponsibleFor_recovery)
       .matchAny(msg -> {
         System.out.println(getSelf().path().name() + " ignoring " + msg.getClass().getSimpleName() + " (crashed)");
       })
@@ -163,7 +164,7 @@ public class Node extends AbstractActor {
     // retrive message data
     Integer joiningNodeKey = msg.key;
 
-    // iterate the data item set to find the data items the joining node is responsible for
+    // iterate the data item set to find the data items the joining node is responsible for (TODO: riflettere se era meglio usare getResponsible)
     Set<Item> resSet = new HashSet<>();
     if(joiningNodeKey < this.key){  // example: the node which is joining has key 9 and its successor in the ring has key 15
 
@@ -197,7 +198,7 @@ public class Node extends AbstractActor {
 
     // retrive message data and add the data items the joining node is responsible for
     for(Item item : msg.resSet) {
-      this.items.put(item.key, item);
+      this.items.put(item.key, item); //TODO: fare copia valore e non riferimento
     }
     System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor] Now I am responsible for the following data items:"+this.items.values());
 
@@ -479,6 +480,39 @@ public class Node extends AbstractActor {
 
     // the node add itself to the list of nodes currently active
     this.peers.put(this.key, this.getSelf());
+
+    // the node which is recovering should discard those items that are no longer under its responsability
+    for(Integer ik : this.items.keySet()){
+      Set<Integer> responsibleNodes = this.getResponsibleNode(ik);
+      if(!responsibleNodes.contains(this.key)){
+        this.items.remove(ik);
+      }
+    }
+
+    // the node which is recovering should obtain the items that are now under its responsability
+    // this information can be retrived from the clockwise neighbor (which holds all items it needs)
+    ActorRef clockwiseNeighbor = this.getClockwiseNeighbor();
+    System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList_recovery] My clockwise neighbour is: "+clockwiseNeighbor);
+    Message.ReqDataItemsResponsibleFor clockwiseNeighborRequest = new Message.ReqDataItemsResponsibleFor(this.key);
+    clockwiseNeighbor.tell(clockwiseNeighborRequest, this.getSelf());
+  }
+
+  // the node which is currently in crash state receivers the items that are now under its responsability
+  // from its clockwise neighbor
+  private void onResDataItemsResponsibleFor_recovery(Message.ResDataItemsResponsibleFor msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor_recovery]");
+
+    // retrive message data and add the data items the recovery node is responsible for.
+    // It is important to check item version throughout this process to avoid overwriting
+    // updated item or update old version items.
+    for(Item item : msg.resSet) {
+      if(!this.items.containsKey(item.key) ||  (this.items.containsKey(item.key) && this.items.get(item.key).getVersion() < item.getVersion())){
+        this.items.put(item.key, new Item(item.key, item.value, item.version));
+      }
+    }
+    System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor_recovery] Now I am responsible for the following data items:"+this.items.values());
+
+    // TODO: send read operations
 
     // exit crash state 
     this.recover();
