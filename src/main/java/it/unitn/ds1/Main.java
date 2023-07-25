@@ -120,8 +120,19 @@ public class Main {
     catch (InterruptedException e) { e.printStackTrace(); }
 
     n5.tell(new Message.JoinMsg(50, n3), ActorRef.noSender());    
-
     // ...end join
+
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    n1.tell(new Message.PrintItemList(), ActorRef.noSender());
+    n2.tell(new Message.PrintItemList(), ActorRef.noSender());
+    n3.tell(new Message.PrintItemList(), ActorRef.noSender());
+    n4.tell(new Message.PrintItemList(), ActorRef.noSender());
+    n5.tell(new Message.PrintItemList(), ActorRef.noSender());
+
+    // ...end print item set of the nodes
 
     try {
       System.out.println(">>> Press ENTER to exit <<<");
