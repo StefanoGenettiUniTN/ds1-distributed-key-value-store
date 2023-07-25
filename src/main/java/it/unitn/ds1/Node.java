@@ -20,6 +20,9 @@ public class Node extends AbstractActor {
   private final Map<Integer, Item> items;       // the set of data item the node is currently responsible for
   private final Map<Integer, Request> requests; // Lists of the requests
 
+  private int join_update_item_response_counter;  // the joining node performs read operations to ensure that its items are up to date.
+                                                  // This attribute is the number of nodes from which it is waiting for the updated
+                                                  // version of the items
 
   public Node(int _key, int n, int r, int w, int t){
     this.N = n;
@@ -31,6 +34,8 @@ public class Node extends AbstractActor {
     this.items = new HashMap<>();
     this.requests = new HashMap<>();
     counterRequest = 0;
+
+    join_update_item_response_counter = 0;
   }
 
   @Override
@@ -60,6 +65,10 @@ public class Node extends AbstractActor {
       .match(Message.UpdateRequest.class, this::onUpdateRequest)
       .match(Message.UpdateVersion.class, this::onUpdateVersion)
       .match(Message.Write.class, this::onWrite)
+      .match(Message.ReqDataItemsResponsibleFor.class, this::onReqDataItemsResponsibleFor)
+      .match(Message.ResDataItemsResponsibleFor.class, this::onResDataItemsResponsibleFor)
+      .match(Message.JoinReadOperationReq.class, this::onJoinReadOperationReq)
+      .match(Message.JoinReadOperationRes.class, this::onJoinReadOperationRes)
       .match(Message.AnnouncePresence.class, this::onAnnouncePresence)
       .match(Message.CrashMsg.class, this::onCrashMsg)
       .match(Message.Timeout.class, this::onTimeout)
@@ -96,6 +105,8 @@ public class Node extends AbstractActor {
     this.peers.put(this.key, this.getSelf());
   }
 
+  /*----------JOIN----------*/
+
   // Node receive the JoinMsg from Main
   private void onJoinMsg(Message.JoinMsg msg){
     System.out.println("["+this.getSelf().path().name()+"] [onJoinMsg]");
@@ -131,16 +142,194 @@ public class Node extends AbstractActor {
       this.peers.put(pair.getKey(), pair.getValue());
     }
 
-    // the node add itself to the list of nodes currently active
-    this.peers.put(this.key, this.getSelf());
+    // get clocwise neighbor which has to be queried to request data items 
+    // the joining node is responsible for
+    ActorRef clockwiseNeighbor = this.getClockwiseNeighbor();
+    System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList] My clockwise neighbour is: "+clockwiseNeighbor);
 
-    // the node can finally announce its presence to every node in the system
-    Message.AnnouncePresence announcePresence = new Message.AnnouncePresence(this.key);
-    this.peers.forEach((k, p) -> {
-      if(!p.equals(this.getSelf())){
-        p.tell(announcePresence, this.getSelf());
+    // request data items the joining node is responsible for from its clockwise neighbor (which holds all items it needs)
+    Message.ReqDataItemsResponsibleFor clockwiseNeighborRequest = new Message.ReqDataItemsResponsibleFor(this.key);
+    clockwiseNeighbor.tell(clockwiseNeighborRequest, this.getSelf());
+  }
+
+  // receive this request from a joining node "jn" which is requesting to its clockwise neighbor
+  // the data items "jn" should be responsible for.
+  // The message msg contains the key of the joining node
+  private void onReqDataItemsResponsibleFor(Message.ReqDataItemsResponsibleFor msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onReqDataItemsResponsibleFor]");
+
+    // retrive message data
+    Integer joiningNodeKey = msg.key;
+
+    // iterate the data item set to find the data items the joining node is responsible for
+    Set<Item> resSet = new HashSet<>();
+    if(joiningNodeKey < this.key){  // example: the node which is joining has key 9 and its successor in the ring has key 15
+
+      for (Map.Entry<Integer, Item> dataItem : this.items.entrySet()) {
+        if(dataItem.getKey() < joiningNodeKey){
+          resSet.add(dataItem.getValue());
+        }else if(dataItem.getKey() > this.key){
+          resSet.add(dataItem.getValue());
+        }
       }
-    });
+
+    }else{  //example: in this case the node which is joining has the currently highest key: the successor of
+            //---------the joining node is the first node in the ring (ie the one with the smallest key) 
+
+      for (Map.Entry<Integer, Item> dataItem : this.items.entrySet()) {
+        if(dataItem.getKey() < joiningNodeKey && dataItem.getKey() > this.key){
+          resSet.add(dataItem.getValue());
+        }
+      }
+
+    }
+
+    // send the list of data item that the joining node is responsible for
+    Message.ResDataItemsResponsibleFor msg_response = new Message.ResDataItemsResponsibleFor(Collections.unmodifiableSet(resSet));
+    this.getSender().tell(msg_response, this.getSelf());
+  }
+
+  // the joining node receives the set of data imtems it is responsible for from its clockwise neighbor
+  private void onResDataItemsResponsibleFor(Message.ResDataItemsResponsibleFor msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor]");
+
+    // retrive message data and add the data items the joining node is responsible for
+    for(Item item : msg.resSet) {
+      this.items.put(item.key, item);
+    }
+    System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor] Now I am responsible for the following data items:"+this.items.values());
+
+    //--- perform read operations to ensure that the received items are up to date. // TODO: riflettere sui timeout
+    //--- remark: no read request is sent to the clockwise neighbor which has just sent the current set of items
+    Set<ActorRef> readDestinationNodes = new HashSet<>();
+    int n = 1;  // TODO: read this.N
+
+    ArrayList<Integer> peerKeyList = new ArrayList<Integer>(this.peers.keySet());
+    int clockwiseNeighborIndex = -1;
+    for(int counter = 0; counter<peerKeyList.size(); counter++){  // get index of the clockwise neighbour in the list of peers
+      Integer pk = peerKeyList.get(counter);
+      if(this.peers.get(pk).equals(this.getSender())){
+        clockwiseNeighborIndex = counter;
+        break;
+      }
+    }
+
+    // send the read request to the N-1 nodes after the clockwise neighbor of the joining node 
+    for(int i=1; i<=n-1; i++){
+      readDestinationNodes.add( 
+        this.peers.get(
+          peerKeyList.get(
+            (clockwiseNeighborIndex + i)%peerKeyList.size()
+          )
+        )
+      );
+    }
+
+    // send the read request to the N-1 nodes before the clockwise neighbor of the joining node 
+    for(int i=1; i<=n-1; i++){
+      readDestinationNodes.add( 
+        this.peers.get(
+          peerKeyList.get(
+            (clockwiseNeighborIndex - i)%peerKeyList.size()
+          )
+        )
+      );
+    }
+
+    // send read operation
+    Set<Item> itemSet = new HashSet<>();
+    for(Item item : this.items.values()){
+      itemSet.add(item);
+    }
+    Message.JoinReadOperationReq msg_JoinReadOperationReq = new Message.JoinReadOperationReq(Collections.unmodifiableSet(itemSet));
+    for(ActorRef dest : readDestinationNodes){
+      dest.tell(msg_JoinReadOperationReq, this.getSelf());
+      this.join_update_item_response_counter++;
+    }
+    // TODO: riflettere se qui si può ridurre il numero di messaggi scambiati
+    // inviando solo ai nodi che effettivamente possono essere i responsabili di un item
+    //---
+
+    // in the case this.join_update_item_response_counter==0 then it is not necessary to perform any read operation
+    // and the node can immediately announce its presence to every node in the system
+    if(this.join_update_item_response_counter == 0){
+      
+      // the node add itself to the list of nodes currently active
+      this.peers.put(this.key, this.getSelf());
+
+      // the node can finally announce its presence to every node in the system
+      Set<Integer> announcePresenceKeyItemSet = new HashSet<>(this.items.keySet());
+      Message.AnnouncePresence announcePresence = new Message.AnnouncePresence(this.key, Collections.unmodifiableSet(announcePresenceKeyItemSet));
+      this.peers.forEach((k, p) -> {
+        if(!p.equals(this.getSelf())){
+          p.tell(announcePresence, this.getSelf());
+        }
+      });
+    }
+
+  }
+
+  // Receive this message from a node that in the context of the join operation, it is performing reads to ensure that
+  // its items are up to date
+  private void onJoinReadOperationReq(Message.JoinReadOperationReq msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onJoinReadOperationReq]");
+
+    // retrive message data and collect those items which
+    // have a higher version in this node
+    Set<Item> updatedItems = new HashSet<>();
+    for(Item item : msg.requestItemSet) {
+      if(this.items.containsKey(item.getKey()) && this.items.get(item.getKey()).getVersion() > item.getVersion()){  // the current node has a more updated version of the item
+        Item updatedItem = new Item(  item.key,
+                                      this.items.get(item.getKey()).getValue(),
+                                      this.items.get(item.getKey()).getVersion());
+        updatedItems.add(updatedItem);
+      }
+    }
+
+    // send the update version of the requested items
+    // to the node which is joining the network
+    Message.JoinReadOperationRes joinReadOperationResponse = new Message.JoinReadOperationRes(Collections.unmodifiableSet(updatedItems));
+    this.getSender().tell(joinReadOperationResponse, this.getSelf());
+  }
+
+  // The joining node is receiving the updated version of its items from the other peers.
+  // As soon as the joining node receives the JoinReadOperationRes from all the requested
+  // nodes, the node can finally announce its presence to every node in the system and start
+  // serving requests coming from clients.
+  private void onJoinReadOperationRes(Message.JoinReadOperationRes msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onJoinReadOperationRes]");
+    
+    // decrease the counter of nodes from which I am waiting for
+    // the updated version of the items
+    this.join_update_item_response_counter--;
+
+    // retrive message data and update the items in this.items accordingly
+    for(Item item : msg.responseItemSet){
+      if(this.items.get(item.getKey()).getVersion() < item.getVersion()){
+        Item updatedItem = new Item(  item.key,
+                                      item.getValue(),
+                                      item.getVersion());
+        this.items.put(updatedItem.getKey(), updatedItem);
+      }
+    }
+
+    // all the requested nodes have sent the updated version of the items.
+    // Finally, the present joining node can announce its presence to every
+    // node in the system and start serving requests coming from clients.
+    if(this.join_update_item_response_counter == 0){
+      // the node add itself to the list of nodes currently active
+      this.peers.put(this.key, this.getSelf());
+
+      // the node can finally announce its presence to every node in the system
+      Set<Integer> announcePresenceKeyItemSet = new HashSet<>(this.items.keySet());
+      Message.AnnouncePresence announcePresence = new Message.AnnouncePresence(this.key, Collections.unmodifiableSet(announcePresenceKeyItemSet));
+      this.peers.forEach((k, p) -> {
+        if(!p.equals(this.getSelf())){
+          p.tell(announcePresence, this.getSelf());
+        }
+      });
+    }
+
   }
 
   // Sender of this message is a node which is joining the system.
@@ -150,10 +339,26 @@ public class Node extends AbstractActor {
 
     // retrive message data
     int msg_key = msg.key;  // the key of the new node which is asking to join the system
+    Set<Integer> msg_keyItemSet = new HashSet<>();
+    msg_keyItemSet.addAll(msg.keyItemSet);  // TODO: riflettere se è giusto così dal punto di vista dell'immutable final e quelle cose la, magari visto che è solo lettura, posso anche leggere dal messaggio simplicemente
 
     // add the new node to the current list of active nodes
     this.peers.put(msg_key, this.getSender());
+
+    // for each item in keyItemSet which is also in this.items, check if
+    // the present node is still responsible for. Consequently, remove the data items
+    // the present node is no longer responsible for. 
+    for(Integer itemKey : msg_keyItemSet){
+      if(this.items.keySet().contains(itemKey)){
+        if(!this.getResponsibleNode(itemKey).contains(this.key)){  // the present node is no more responsible for this item
+          this.items.remove(itemKey); // remove the item
+        }
+      }
+    }
+
   }
+
+  /*----------END JOIN----------*/
 
   /*----------CRASH----------*/
   private void crash() {
@@ -218,6 +423,8 @@ public class Node extends AbstractActor {
 
   /*----------GET RESPONSIBLE NODES FOR AN ITEM----------*/
 
+  // given a key, get the set of actors which are responsible
+  // for that item according to N
   private Set<Integer> getResponsibleNode(int key){
     Set<Integer> responsibleNode = new HashSet<>();
     int n = this.N;
@@ -248,6 +455,45 @@ public class Node extends AbstractActor {
   }
 
   /*----------END GET RESPONSIBLE NODES FOR AN ITEM----------*/
+
+  // get clockwise neighbor
+  // this function is called in the context of a join
+  // request, so the present node is not part of the network yet (TODO: magari facciamo in modo che invece questo metodo sia generico)
+  private ActorRef getClockwiseNeighbor(){
+
+    for(Map.Entry<Integer, ActorRef> entry : this.peers.entrySet()) {
+      if(this.key < entry.getKey()){
+        return entry.getValue();
+      }
+    }
+
+    return ((TreeMap<Integer, ActorRef>) this.peers).firstEntry().getValue();
+  }
+
+  // get predecessor TODO: riflettere cosa succede quando esiste solo un nodo nel cerchio
+  private ActorRef getPredecessor(){
+    Integer currentNodeKey = -1;
+    Integer prevNodeKey = -1;
+    Integer predecessorNodeKey = -1;
+
+    for(Map.Entry<Integer, ActorRef> entry : this.peers.entrySet()) {
+
+      currentNodeKey = entry.getKey();
+
+      if(currentNodeKey == this.key){
+        if(prevNodeKey!=-1){
+          predecessorNodeKey = prevNodeKey;
+        }else{
+          predecessorNodeKey = ((TreeMap<Integer, ActorRef>) this.peers).lastEntry().getKey();
+        }
+        break;
+      }
+
+      prevNodeKey = currentNodeKey;
+    }
+
+    return this.peers.get(predecessorNodeKey);
+  }
 
   /*----------GET----------*/
 
@@ -389,7 +635,7 @@ public class Node extends AbstractActor {
   }
 
   /*----------END UPDATE----------*/
-
+  
   // Print the list of nodes
   private void onPrintNodeList(Message.PrintNodeList msg){
     System.out.println("["+this.getSelf().path().name()+"] [onPrintNodeList]");

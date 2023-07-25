@@ -71,40 +71,57 @@ public class Main {
 
     //...end step 1
 
-    // 2. Create client node c1
+    // 2. Create client nodes and perform read and write operations
     ActorRef c1 = system.actorOf(Client.props(),"c1");
     ActorRef c2 = system.actorOf(Client.props(),"c2");
 
-    c1.tell(new ClientMessage.Update(new Item(35, "Ciao"), n1), ActorRef.noSender());
-    c2.tell(new ClientMessage.Update(new Item(7, "Come"), n2), ActorRef.noSender());
-    c1.tell(new ClientMessage.Update(new Item(58, "Va"), n3), ActorRef.noSender());
+    // perform write operations
+    c1.tell(new ClientMessage.Update(new Item(6, "VALUE6"), n1), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(7, "VALUE7"), n2), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(8, "VALUE8"), n3), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(15, "VALUE15"), n1), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(60, "VALUE60"), n2), ActorRef.noSender());
+    c2.tell(new ClientMessage.Update(new Item(25, "VALUE25"), n3), ActorRef.noSender());
+    c2.tell(new ClientMessage.Update(new Item(28, "VALUE28"), n1), ActorRef.noSender());
+    c2.tell(new ClientMessage.Update(new Item(33, "VALUE33"), n2), ActorRef.noSender());
+    c2.tell(new ClientMessage.Update(new Item(49, "VALUE49"), n3), ActorRef.noSender());
 
     try { Thread.sleep(1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
-    c1.tell(new ClientMessage.Get(7, n1), ActorRef.noSender());
-    c1.tell(new ClientMessage.Get(35, n1), ActorRef.noSender());
-    c1.tell(new ClientMessage.Get(58, n1), ActorRef.noSender());
+    // perform read operations
+    c1.tell(new ClientMessage.Get(7,n1), ActorRef.noSender());
+    c1.tell(new ClientMessage.Get(15,n1), ActorRef.noSender());
+    c1.tell(new ClientMessage.Get(33,n1), ActorRef.noSender());
 
     try { Thread.sleep(1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
-    c1.tell(new ClientMessage.Update(new Item(58, "CAMBIATO"), n1), ActorRef.noSender());
+    // update item
+    c1.tell(new ClientMessage.Update(new Item(15, "VALUE15_updated"), n1), ActorRef.noSender());
 
     try { Thread.sleep(1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
-    c2.tell(new ClientMessage.Get(58, n1), ActorRef.noSender());
+    // read updated item
+    c2.tell(new ClientMessage.Get(15, n1), ActorRef.noSender());
     //...end step 2
 
+    // 3. Join
     try { Thread.sleep(1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
-    n3.tell(new Message.PrintItemList(), ActorRef.noSender());  // ask to print the current list of peers
+    ActorRef n4 = system.actorOf(Node.props(10, N, R, W, T),"n4");
+    ActorRef n5 = system.actorOf(Node.props(50, N, R, W, T),"n5");
 
-    n1.tell(new Message.PrintItemList(), ActorRef.noSender());  // ask to print the current list of peers
+    n4.tell(new Message.JoinMsg(10, n1), ActorRef.noSender());
 
-    n2.tell(new Message.PrintItemList(), ActorRef.noSender());  // ask to print the current list of peers
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    n5.tell(new Message.JoinMsg(50, n3), ActorRef.noSender());    
+
+    // ...end join
 
     try {
       System.out.println(">>> Press ENTER to exit <<<");
