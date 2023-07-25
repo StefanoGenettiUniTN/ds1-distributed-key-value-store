@@ -538,11 +538,10 @@ public class Node extends AbstractActor {
   private void onReadItemInformation(Message.ReadItemInformation msg){
     System.out.println("["+this.getSelf().path().name()+"] [onReadItemInformation] Owner");
 
-    Request req = this.requests.remove(msg.requestId);
+    Request req = this.requests.get(msg.requestId);
 
     if(req != null) {
       req.setCounter(req.getCounter() + 1);
-
       int nR = req.getCounter();
 
       if(nR < this.R){
@@ -552,6 +551,7 @@ public class Node extends AbstractActor {
             item.setValue(msg.item.getValue());
           }
       } else if(nR == this.R) {
+        this.requests.remove(msg.requestId);
         req.getClient().tell(new ClientMessage.GetResult(Result.SUCCESS, msg.item), ActorRef.noSender());
       }
     }
@@ -650,7 +650,7 @@ public class Node extends AbstractActor {
 
   // Print the list of Item
   private void onPrintItemList(Message.PrintItemList msg){
-    System.out.println("["+this.getSelf().path().name()+"] [onPrintItemList]: " + this.items);
+    System.out.println("["+this.getSelf().path().name()+"] [onPrintItemList] Node: " + key +  "  " + this.items);
   }
 
   /*======================*/
