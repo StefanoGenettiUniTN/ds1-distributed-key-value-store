@@ -33,7 +33,7 @@ public class Client extends AbstractActor {
   // Ask the coordinator to get an item
   private void onGet(ClientMessage.Get msg){
     System.out.println("["+this.getSelf().path().name()+"] [onGet] Client");
-    (msg.coordinator).tell(new Message.GetRequest(msg.key), this.getSelf());
+    (msg.coordinator).tell(new Message.GetRequest(msg.item), this.getSelf());
   }
 
   private void onGetResult(ClientMessage.GetResult msg){

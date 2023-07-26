@@ -12,10 +12,10 @@ enum Result { SUCCESS, ERROR }
 public class ClientMessage{
     // This class represents a message to get an item value
     public static class Get implements Serializable {
-        public final int key;
+        public final Item item;
         public final ActorRef coordinator;
-        public Get(int key, ActorRef coordinator) {
-            this.key = key;
+        public Get(Item item, ActorRef coordinator) {
+            this.item = item;
             this.coordinator = coordinator;
         }
     }

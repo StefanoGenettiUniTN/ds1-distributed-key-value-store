@@ -7,12 +7,17 @@ import akka.actor.ActorSystem;
 
 public class Main {
 
-  final static int N = 2; // degree of replication
-  final static int R = 2; // read quorum
-  final static int W = 2; // write quorum
+  final static int N = 1; // degree of replication
+  final static int R = 1; // read quorum
+  final static int W = 1; // write quorum
   final static int T = 5; // timeout
 
   public static void main(String[] args) {
+    if(R + W <= N || W <= N/2){
+      System.out.println("N, R e W non sono stati settati correttamente per sequential consistency");
+      return;
+    }
+
     // Create the actor system
     final ActorSystem system = ActorSystem.create("ds1-project");
 
@@ -90,9 +95,9 @@ public class Main {
     catch (InterruptedException e) { e.printStackTrace(); }
 
     // perform read operations
-    c1.tell(new ClientMessage.Get(7,n1), ActorRef.noSender());
-    c1.tell(new ClientMessage.Get(15,n1), ActorRef.noSender());
-    c1.tell(new ClientMessage.Get(33,n1), ActorRef.noSender());
+    c1.tell(new ClientMessage.Get(new Item(7, ""),n1), ActorRef.noSender());
+    c1.tell(new ClientMessage.Get(new Item(15, ""),n1), ActorRef.noSender());
+    c1.tell(new ClientMessage.Get(new Item(33, ""),n1), ActorRef.noSender());
 
     try { Thread.sleep(1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
@@ -104,7 +109,7 @@ public class Main {
     catch (InterruptedException e) { e.printStackTrace(); }
 
     // read updated item
-    c2.tell(new ClientMessage.Get(15, n1), ActorRef.noSender());
+    c2.tell(new ClientMessage.Get(new Item(15, ""), n1), ActorRef.noSender());
     //...end step 2
 
     // 3. Join

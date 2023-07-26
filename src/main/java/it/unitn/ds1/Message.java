@@ -133,9 +133,9 @@ public class Message{
 
     // This class represents a message to get an item
     public static class GetRequest implements Serializable {
-        public final int key;
-        public GetRequest(int key) {
-            this.key = key;
+        public final Item item;
+        public GetRequest(Item item) {
+            this.item = item;
         }
     }
 
@@ -152,10 +152,10 @@ public class Message{
     // This class represents a message to read an item
     public static class Read implements Serializable {
         public final int requestId;
-        public final int key;
-        public Read(int requestId, int key) {
+        public final Item item;
+        public Read(int requestId, Item item) {
             this.requestId = requestId;
-            this.key = key;
+            this.item = item;
         }
     }
 
@@ -189,10 +189,8 @@ public class Message{
 
     // This class represents a message to write the new item
     public static class Write implements Serializable {
-        public final int requestId;
         public final Item item;
-        public Write(int requestId, Item item) {
-            this.requestId = requestId;
+        public Write(Item item) {
             this.item = item;
         }
     }

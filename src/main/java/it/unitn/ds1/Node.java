@@ -569,29 +569,50 @@ public class Node extends AbstractActor {
 
   // Coordinator manage get request
   private void onGetRequest(Message.GetRequest msg){
-    int key = msg.key;
+    Item item =  new Item(msg.item);
     System.out.println("["+this.getSelf().path().name()+"] [onGet] Coordinator");
 
     counterRequest++;
-    this.requests.put(counterRequest, new Request(this.getSender(), new Item(key, ""), Type.GET));
+    Request req = new Request(this.getSender(), new Item(key, ""), Type.GET);
+    this.requests.put(counterRequest, req);
 
-    for(int node : getResponsibleNode(key)) {
-      (peers.get(node)).tell(new Message.Read(counterRequest, key), this.getSelf());
+    ///se sono responsabile, aggiorno item, controllo se R = 1 (semmai invio risposta), in caso contrario eseguo codice sotto
+    Set<Integer> respNodes = getResponsibleNode(item.getKey());
+
+    if(respNodes.contains(this.key)){
+      if(this.items.containsKey(item.getKey())) {
+        req.setCounter(req.getCounter() + 1);
+        item.setVersion(msg.item.getVersion());
+        item.setValue(msg.item.getValue());
+      }
     }
 
-    //Timeout
-    getContext().system().scheduler().scheduleOnce(
-            Duration.create(Main.T, TimeUnit.SECONDS),
-            this.getSelf(),
-            new Message.Timeout(counterRequest), // the message to send,
-            getContext().system().dispatcher(), this.getSelf()
-    );
+    int nR = req.getCounter();
+
+    if(nR < this.R) {
+      for (int node : respNodes) {
+        if(node != this.key) {
+          (peers.get(node)).tell(new Message.Read(counterRequest, item), this.getSelf());
+        }
+      }
+
+      //Timeout
+      getContext().system().scheduler().scheduleOnce(
+              Duration.create(Main.T, TimeUnit.SECONDS),
+              this.getSelf(),
+              new Message.Timeout(counterRequest), // the message to send,
+              getContext().system().dispatcher(), this.getSelf()
+      );
+    } else if (nR == this.R){ // this should happen only if R is set to 1
+      System.out.println("["+this.getSelf().path().name()+"] [onDirectReadItemInformation] Owner");
+      this.requests.remove(counterRequest);
+      req.getClient().tell(new ClientMessage.GetResult(Result.SUCCESS, item), ActorRef.noSender());
+    }
   }
 
   //Return information of an item to the coordinator
   private void onRead(Message.Read msg){
-    int item_key = msg.key;
-    Item item = this.items.get(item_key);
+    Item item = this.items.get(msg.item.getKey());
     if(item != null) {
       System.out.println("[" + this.getSelf().path().name() + "] [onRead] Owner: " + key + " ITEM: " + item);
       this.getSender().tell(new Message.ReadItemInformation(msg.requestId, item), ActorRef.noSender());
@@ -608,13 +629,13 @@ public class Node extends AbstractActor {
       req.setCounter(req.getCounter() + 1);
       int nR = req.getCounter();
 
-      if(nR < this.R){
-          Item item = req.getItem();
-          if(msg.item.getVersion() > item.getVersion()){
-            item.setVersion(msg.item.getVersion());
-            item.setValue(msg.item.getValue());
-          }
-      } else if(nR == this.R) {
+      Item item = req.getItem();
+      if(msg.item.getVersion() > item.getVersion()){
+        item.setVersion(msg.item.getVersion());
+        item.setValue(msg.item.getValue());
+      }
+
+      if(nR == this.R) {
         this.requests.remove(msg.requestId);
         req.getClient().tell(new ClientMessage.GetResult(Result.SUCCESS, msg.item), ActorRef.noSender());
       }
@@ -641,20 +662,43 @@ public class Node extends AbstractActor {
     Item item = new Item(msg.item);
     System.out.println("["+this.getSelf().path().name()+"] [onUpdate] Coordinator");
 
-    this.counterRequest++;
-    this.requests.put(counterRequest, new Request(this.getSender(), item, Type.UPDATE));
+    counterRequest++;
+    Request req = new Request(this.getSender(), item, Type.UPDATE);
+    this.requests.put(counterRequest, req);
 
-    for(int node : getResponsibleNode(item.key)) {
-      (peers.get(node)).tell(new Message.Version(counterRequest, item), this.getSelf());
+    ///se sono responsabile, aggiorno item, controllo se R = 1 (semmai invio risposta), in caso contrario eseguo codice sotto
+    Set<Integer> respNodes = getResponsibleNode(item.getKey());
+
+    if(respNodes.contains(this.key)){
+      req.setCounter(req.getCounter() + 1);
+      if(this.items.get(item.getKey()) != null) {
+        item.setVersion((this.items.get(item.getKey())).getVersion());
+      }
     }
 
-    //Timeout
-    getContext().system().scheduler().scheduleOnce(
-          Duration.create(Main.T, TimeUnit.SECONDS),
-          this.getSelf(),
-          new Message.Timeout(counterRequest), // the message to send,
-          getContext().system().dispatcher(), this.getSelf()
+    int nW = req.getCounter();
+
+    if(nW < this.W){
+      for(int node : respNodes) {
+        if(node != this.key) {
+          (peers.get(node)).tell(new Message.Version(counterRequest, item), this.getSelf());
+        }
+      }
+
+      //Timeout
+      getContext().system().scheduler().scheduleOnce(
+              Duration.create(Main.T, TimeUnit.SECONDS),
+              this.getSelf(),
+              new Message.Timeout(counterRequest), // the message to send,
+              getContext().system().dispatcher(), this.getSelf()
       );
+    } else if(nW == this.W) { // this should be only if W is 1
+      item.setVersion(item.getVersion() + 1);
+      this.requests.remove(counterRequest);
+      req.getClient().tell(new ClientMessage.UpdateResult(Result.SUCCESS, item), ActorRef.noSender());
+      this.items.put(item.getKey(), item);
+      System.out.println("["+this.getSelf().path().name()+"] [onDirectWriteInformation] Owner: " + key + " ITEM: " + item);
+    }
   }
 
   //Return version of an item
@@ -665,7 +709,6 @@ public class Node extends AbstractActor {
       item.setVersion((this.items.get(item.getKey())).getVersion());
     }
 
-    //this.getSender().tell(new Message.UpdateVersion(msg.requestId, item), ActorRef.noSender());
     this.getSender().tell(new Message.UpdateVersion(msg.requestId, item), this.getSelf());
   }
 
@@ -687,12 +730,13 @@ public class Node extends AbstractActor {
         }
       } else if(nW == this.W) {
         itemReq.setVersion(itemReq.getVersion() + 1);
-        for (int node : getResponsibleNode(item.getKey())) {
-          (peers.get(node)).tell(new Message.Write(msg.requestId, itemReq), this.getSelf());
-        }
 
         this.requests.remove(msg.requestId);
         req.getClient().tell(new ClientMessage.UpdateResult(Result.SUCCESS, itemReq), ActorRef.noSender());
+
+        for (int node : getResponsibleNode(item.getKey())) {
+          (peers.get(node)).tell(new Message.Write(itemReq), this.getSelf());
+        }
       }
     }
   }
