@@ -66,6 +66,7 @@ public class Node extends AbstractActor {
       .match(Message.UpdateVersion.class, this::onUpdateVersion)
       .match(Message.Write.class, this::onWrite)
       .match(Message.ReqDataItemsResponsibleFor.class, this::onReqDataItemsResponsibleFor)
+      .match(Message.ReqDataItemsResponsibleFor_recovery.class, this::onReqDataItemsResponsibleFor_recovery)
       .match(Message.ResDataItemsResponsibleFor.class, this::onResDataItemsResponsibleFor)
       .match(Message.JoinReadOperationReq.class, this::onJoinReadOperationReq)
       .match(Message.JoinReadOperationRes.class, this::onJoinReadOperationRes)
@@ -164,27 +165,15 @@ public class Node extends AbstractActor {
     // retrive message data
     Integer joiningNodeKey = msg.key;
 
-    // iterate the data item set to find the data items the joining node is responsible for (TODO: riflettere se era meglio usare getResponsible)
+    // iterate the data item set to find the data items the joining node is responsible for
     Set<Item> resSet = new HashSet<>();
-    if(joiningNodeKey < this.key){  // example: the node which is joining has key 9 and its successor in the ring has key 15
-
-      for (Map.Entry<Integer, Item> dataItem : this.items.entrySet()) {
-        if(dataItem.getKey() < joiningNodeKey){
-          resSet.add(dataItem.getValue());
-        }else if(dataItem.getKey() > this.key){
-          resSet.add(dataItem.getValue());
-        }
+    TreeSet<Integer> simulateNewRing = new TreeSet<>();
+    simulateNewRing.addAll(this.peers.keySet());
+    simulateNewRing.add(joiningNodeKey);
+    for (Map.Entry<Integer, Item> dataItem : this.items.entrySet()) {
+      if(this.getResponsibleNode(dataItem.getKey(), simulateNewRing).contains(joiningNodeKey)){
+        resSet.add(dataItem.getValue());
       }
-
-    }else{  //example: in this case the node which is joining has the currently highest key: the successor of
-            //---------the joining node is the first node in the ring (ie the one with the smallest key) 
-
-      for (Map.Entry<Integer, Item> dataItem : this.items.entrySet()) {
-        if(dataItem.getKey() < joiningNodeKey && dataItem.getKey() > this.key){
-          resSet.add(dataItem.getValue());
-        }
-      }
-
     }
 
     // send the list of data item that the joining node is responsible for
@@ -441,7 +430,7 @@ public class Node extends AbstractActor {
     this.peers.remove(leavingNodeKey);
 
     // add data items of which the present node is responsible for after the departure of the leaving node
-    for(Item item : msg.keyItemSet){
+    for(Item item : msg.itemSet){
       Item updatedItem = new Item(  item.key,
                                     item.getValue(),
                                     item.getVersion());
@@ -492,17 +481,17 @@ public class Node extends AbstractActor {
   private void onResActiveNodeList_recovery(Message.ResActiveNodeList msg){
     System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList_recovery]");
 
-    //// TODO: riflettere se si può riciclare il onResActiveNodeList quando non conterrà più l'announce e onResActiveNodeList_recovery non conterrà più il cambiamento di stato a non crash
-
     // retrive message data and initialize the list of peers
     for (Map.Entry<Integer, ActorRef> pair : msg.activeNodes.entrySet()) {
       this.peers.put(pair.getKey(), pair.getValue());
     }
 
     // the node add itself to the list of nodes currently active
-    this.peers.put(this.key, this.getSelf()); // TODO: riflettere se serve
+    // indeed the present node has removed all the elements of this.peers
+    // in onRecoveryMsg
+    this.peers.put(this.key, this.getSelf());
 
-    // the node which is recovering should discard those items that are no longer under its responsability
+    // ii. the node which is recovering should discard those items that are no longer under its responsability
     for(Integer ik : this.items.keySet()){
       Set<Integer> responsibleNodes = this.getResponsibleNode(ik);
       if(!responsibleNodes.contains(this.key)){
@@ -510,14 +499,36 @@ public class Node extends AbstractActor {
       }
     }
 
-    // TODO: inviare quelli che ho così mi manda solo le differenze
-
     // the node which is recovering should obtain the items that are now under its responsability
     // this information can be retrived from the clockwise neighbor (which holds all items it needs)
     ActorRef clockwiseNeighbor = this.getClockwiseNeighbor();
     System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList_recovery] My clockwise neighbour is: "+clockwiseNeighbor);
-    Message.ReqDataItemsResponsibleFor clockwiseNeighborRequest = new Message.ReqDataItemsResponsibleFor(this.key);
+    Message.ReqDataItemsResponsibleFor_recovery clockwiseNeighborRequest = new Message.ReqDataItemsResponsibleFor_recovery(this.key, this.items.keySet());
     clockwiseNeighbor.tell(clockwiseNeighborRequest, this.getSelf());
+  }
+
+  // this message is received from a node which is recovering that is asking
+  // to the present node the items that are now under its responsabilty
+  private void onReqDataItemsResponsibleFor_recovery(Message.ReqDataItemsResponsibleFor_recovery msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onReqDataItemsResponsibleFor_recovery]");
+
+    // retrive message data
+    Integer recoveryNodeKey = msg.key;
+    HashSet<Integer> recoveryNodeItemSet = new HashSet<>();
+    msg.keyItemSet.forEach(itemKey -> recoveryNodeItemSet.add(itemKey));
+
+    // iterate the data item set to find the data items the joining node is responsible for
+    Set<Item> resSet = new HashSet<>();
+    for(int k : this.items.keySet()){
+      Set<Integer> currentItemResp = this.getResponsibleNode(k);
+      if(currentItemResp.contains(recoveryNodeKey) && !recoveryNodeItemSet.contains(k)){
+        resSet.add(new Item(k, this.items.get(k).getValue(), this.items.get(k).getVersion()));
+      }
+    }
+
+    // send the list of data item that the joining node is responsible for
+    Message.ResDataItemsResponsibleFor msg_response = new Message.ResDataItemsResponsibleFor(Collections.unmodifiableSet(resSet));
+    this.getSender().tell(msg_response, this.getSelf());
   }
 
   // the node which is currently in crash state receivers the items that are now under its responsability
@@ -526,17 +537,12 @@ public class Node extends AbstractActor {
     System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor_recovery]");
 
     // retrive message data and add the data items the recovery node is responsible for.
-    // It is important to check item version throughout this process to avoid overwriting
-    // updated item or update old version items.
-    for(Item item : msg.resSet) {
-      // TODO: rimuovere parte dopo l'or (tenere solo !this.items.containsKey(item.key))
-      if(!this.items.containsKey(item.key) ||  (this.items.containsKey(item.key) && this.items.get(item.key).getVersion() < item.getVersion())){
-        this.items.put(item.key, new Item(item.key, item.value, item.version));
-      }
+    for(Item item : msg.resSet) { // TODO: chiere a vecchia se si può fare blind o se si deve aggiornare la versione
+      this.items.put(item.key, new Item(item.key, item.value, item.version));
     }
     System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor_recovery] Now I am responsible for the following data items:"+this.items.values());
 
-    // TODO: send read operations
+    // TODO: chiedere a vecchia send read operations
 
     // exit crash state 
     this.recover();
@@ -572,6 +578,36 @@ public class Node extends AbstractActor {
       for (Map.Entry<Integer, ActorRef> entry : peers.entrySet()) {
         if(n > 0){
           responsibleNode.add(entry.getKey());
+          n--;
+        } else {
+          break;
+        }
+      }
+    }
+
+    return responsibleNode;
+  }
+
+  // overwrite getResponsibleNode: in this implementation we set also the set of peer to take into account
+  private Set<Integer> getResponsibleNode(int key, TreeSet<Integer> peerRing){
+    Set<Integer> responsibleNode = new HashSet<>();
+    int n = this.N;
+
+    for (Integer peerKey : peerRing) {
+      if(n > 0 && key < peerKey){
+        responsibleNode.add(peerKey);
+        n--;
+      }
+
+      if(n <= 0){
+        break;
+      }
+    }
+
+    if(n > 0){
+      for (Integer peerKey : peerRing) {
+        if(n > 0){
+          responsibleNode.add(peerKey);
           n--;
         } else {
           break;

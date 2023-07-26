@@ -97,11 +97,11 @@ public class Message{
     // The node which is leaving announce its departure with this message
     public static class AnnounceDeparture implements Serializable{
         public final int key;
-        public final Set<Item> keyItemSet;   // the node which is leaving passes these data items to the nodes that become responsible for them after its departure
+        public final Set<Item> itemSet;   // the node which is leaving passes these data items to the nodes that become responsible for them after its departure
 
-        public AnnounceDeparture(int _key, Set<Item> _keyItemSet){
+        public AnnounceDeparture(int _key, Set<Item> _itemSet){
             this.key = _key;
-            this.keyItemSet = Collections.unmodifiableSet(new HashSet<>(_keyItemSet));
+            this.itemSet = Collections.unmodifiableSet(new HashSet<>(_itemSet));
         }
     }
 
@@ -111,6 +111,19 @@ public class Message{
 
         public RecoveryMsg(ActorRef _bootstrappingPeer){
             this.bootstrappingPeer = _bootstrappingPeer;
+        }
+    }
+
+    // the node which is recovering requests the items that are now under its responsability from the clockwise neighbor.
+    // In the message we include keyItemSet which is the set of items that are already in the this.items data structure
+    // of the node which is recovering. In this way we avoid to send this items again from the clockwise neighbor.
+    public static class ReqDataItemsResponsibleFor_recovery implements Serializable{
+        public final int key;
+        public final Set<Integer> keyItemSet;
+
+        public ReqDataItemsResponsibleFor_recovery(int _key, Set<Integer> _keyItemSet){
+            this.key = _key;
+            this.keyItemSet = Collections.unmodifiableSet(new HashSet<>(_keyItemSet));
         }
     }
 
