@@ -126,8 +126,10 @@ public class Message{
     // This class represents a timeoutExpiration
     public static class Timeout implements Serializable {
         public final int requestId;
-        public Timeout(int requestId) {
+        public final int itemId;
+        public Timeout(int requestId, int itemId) {
             this.requestId = requestId;
+            this.itemId = itemId;
         }
     }
 
@@ -161,9 +163,11 @@ public class Message{
 
     // This class represents a message to get the version of an item
     public static class Version implements Serializable {
+        public final int coordinatorId;
         public final int requestId;
         public final Item item;
-        public Version(int requestId, Item item) {
+        public Version(int coordinatorId, int requestId, Item item) {
+            this.coordinatorId = coordinatorId;
             this.requestId = requestId;
             this.item = item;
         }

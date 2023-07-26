@@ -19,6 +19,7 @@ public class Node extends AbstractActor {
   private final Map<Integer, ActorRef> peers;   // peers[K] points to the node in the group with key K
   private final Map<Integer, Item> items;       // the set of data item the node is currently responsible for
   private final Map<Integer, Request> requests; // Lists of the requests
+  private final Map<Integer, Integer> locks; //Lock mapping used to manage concurrent write
 
   private int join_update_item_response_counter;  // the joining node performs read operations to ensure that its items are up to date.
                                                   // This attribute is the number of nodes from which it is waiting for the updated
@@ -33,6 +34,7 @@ public class Node extends AbstractActor {
     this.peers = new TreeMap<>();
     this.items = new HashMap<>();
     this.requests = new HashMap<>();
+    this.locks = new HashMap<>();
     counterRequest = 0;
 
     join_update_item_response_counter = 0;
@@ -600,7 +602,7 @@ public class Node extends AbstractActor {
       getContext().system().scheduler().scheduleOnce(
               Duration.create(Main.T, TimeUnit.SECONDS),
               this.getSelf(),
-              new Message.Timeout(counterRequest), // the message to send,
+              new Message.Timeout(counterRequest, item.getKey()), // the message to send,
               getContext().system().dispatcher(), this.getSelf()
       );
     } else if (nR == this.R){ // this should happen only if R is set to 1
@@ -644,7 +646,7 @@ public class Node extends AbstractActor {
 
   /*----------END GET----------*/
 
-  /*----------UPDATE----------*/
+  /*----------TIMEOUT----------*/
 
   private void onTimeout(Message.Timeout msg){
     if(this.requests.containsKey(msg.requestId) == true){
@@ -652,64 +654,88 @@ public class Node extends AbstractActor {
       if(req.getType() == Type.GET) {
         req.getClient().tell(new ClientMessage.GetResult(Result.ERROR, null), ActorRef.noSender());
       } else {
+        this.locks.remove(msg.itemId);
         req.getClient().tell(new ClientMessage.UpdateResult(Result.ERROR, null), ActorRef.noSender());
       }
     }
   }
+
+  /*----------END TIMEOUT----------*/
+
+  /*----------UPDATE----------*/
 
   // Coordinator retrieve last version
   private void onUpdateRequest(Message.UpdateRequest msg){
     Item item = new Item(msg.item);
     System.out.println("["+this.getSelf().path().name()+"] [onUpdate] Coordinator");
 
-    counterRequest++;
-    Request req = new Request(this.getSender(), item, Type.UPDATE);
-    this.requests.put(counterRequest, req);
+    Integer lock = this.locks.get(item.getKey());
+    Item itemNode = this.items.get(item.getKey());
 
-    ///se sono responsabile, aggiorno item, controllo se R = 1 (semmai invio risposta), in caso contrario eseguo codice sotto
-    Set<Integer> respNodes = getResponsibleNode(item.getKey());
+    if(itemNode == null || lock == null || (lock != null && (lock == -1 || lock == this.key))) {
+      counterRequest++;
+      Request req = new Request(this.getSender(), item, Type.UPDATE);
+      this.requests.put(counterRequest, req);
 
-    if(respNodes.contains(this.key)){
-      req.setCounter(req.getCounter() + 1);
-      if(this.items.get(item.getKey()) != null) {
-        item.setVersion((this.items.get(item.getKey())).getVersion());
-      }
-    }
+      ///se sono responsabile, aggiorno item, controllo se R = 1 (semmai invio risposta), in caso contrario eseguo codice sotto
+      Set<Integer> respNodes = getResponsibleNode(item.getKey());
 
-    int nW = req.getCounter();
-
-    if(nW < this.W){
-      for(int node : respNodes) {
-        if(node != this.key) {
-          (peers.get(node)).tell(new Message.Version(counterRequest, item), this.getSelf());
+      //Check if I am responsible for the node and no lock are active on the item
+      if (respNodes.contains(this.key)) {
+        this.locks.put(item.getKey(), this.key);
+        System.out.println("["+this.getSelf().path().name()+"] [onUpdate] Coordinator 1 item "+ item.getKey() + " lock-coordinator: " + this.key);
+        req.setCounter(req.getCounter() + 1);
+        if (this.items.get(item.getKey()) != null) {
+          item.setVersion((this.items.get(item.getKey())).getVersion());
         }
       }
 
-      //Timeout
-      getContext().system().scheduler().scheduleOnce(
-              Duration.create(Main.T, TimeUnit.SECONDS),
-              this.getSelf(),
-              new Message.Timeout(counterRequest), // the message to send,
-              getContext().system().dispatcher(), this.getSelf()
-      );
-    } else if(nW == this.W) { // this should be only if W is 1
-      item.setVersion(item.getVersion() + 1);
-      this.requests.remove(counterRequest);
-      req.getClient().tell(new ClientMessage.UpdateResult(Result.SUCCESS, item), ActorRef.noSender());
-      this.items.put(item.getKey(), item);
-      System.out.println("["+this.getSelf().path().name()+"] [onDirectWriteInformation] Owner: " + key + " ITEM: " + item);
+      int nW = req.getCounter();
+
+      if (nW < this.W) {
+        for (int node : respNodes) {
+          if (node != this.key) {
+            (peers.get(node)).tell(new Message.Version(this.key, counterRequest, item), this.getSelf());
+          }
+        }
+
+        //Timeout
+        getContext().system().scheduler().scheduleOnce(
+                Duration.create(Main.T, TimeUnit.SECONDS),
+                this.getSelf(),
+                new Message.Timeout(counterRequest, item.getKey()), // the message to send,
+                getContext().system().dispatcher(), this.getSelf()
+        );
+      } else if (nW == this.W) { // this should be only if W is 1
+        item.setVersion(item.getVersion() + 1);
+        this.locks.remove(item.getKey());
+        this.requests.remove(counterRequest);
+        req.getClient().tell(new ClientMessage.UpdateResult(Result.SUCCESS, item), ActorRef.noSender());
+        this.items.put(item.getKey(), item);
+        System.out.println("[" + this.getSelf().path().name() + "] [onDirectWriteInformation] Owner: lock: item " + item.getKey() +  " -> lock " + lock + " -> coordinator " + this.key);
+      }
+    } else {
+      System.out.println("["+this.getSelf().path().name()+"] [onUpdate] Coordinator: Locked  item " + item.getKey() + " -> lock " + lock + " -> coordinator " + this.key);
+      this.getSender().tell(new ClientMessage.UpdateResult(Result.ERROR, null), ActorRef.noSender());
     }
   }
 
   //Return version of an item
   private void onVersion(Message.Version msg){
     Item item = new Item(msg.item);
-    System.out.println("["+this.getSelf().path().name()+"] [onVersion] Owner");
-    if(this.items.get(item.getKey()) != null) {
-      item.setVersion((this.items.get(item.getKey())).getVersion());
-    }
+    Integer lock = this.locks.get(item.getKey());
+    if(lock == null || (lock != null && (lock == -1 || lock == msg.coordinatorId))) {
+      System.out.println("[" + this.getSelf().path().name() + "] [onVersion] Owner lock: item key " + item.getKey() +  " -> lock " + lock + " -> coordinator: " + msg.coordinatorId);
+      Item itemNode = this.items.get(item.getKey());
+      if (itemNode != null) {
+        this.locks.put(item.key, msg.coordinatorId);
+        item.setVersion(itemNode.getVersion());
+      }
 
-    this.getSender().tell(new Message.UpdateVersion(msg.requestId, item), this.getSelf());
+      this.getSender().tell(new Message.UpdateVersion(msg.requestId, item), this.getSelf());
+    } else {
+      System.out.println("[" + this.getSelf().path().name() + "] [onVersion] Owner: It's locked: item " + item.getKey() +  " -> lock " + lock +  " -> coordinator " + msg.coordinatorId);
+    }
   }
 
   private void onUpdateVersion(Message.UpdateVersion msg){
@@ -744,6 +770,7 @@ public class Node extends AbstractActor {
   //Update item and send element to the coordinator
   private void onWrite(Message.Write msg){
     Item item = new Item(msg.item);
+    this.locks.remove(item.getKey());
     this.items.put(item.getKey(), item);
     System.out.println("["+this.getSelf().path().name()+"] [onWriteInformation] Owner: " + key + " ITEM: " + item);
   }

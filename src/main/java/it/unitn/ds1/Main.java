@@ -7,9 +7,9 @@ import akka.actor.ActorSystem;
 
 public class Main {
 
-  final static int N = 1; // degree of replication
-  final static int R = 1; // read quorum
-  final static int W = 1; // write quorum
+  final static int N = 2; // degree of replication
+  final static int R = 2; // read quorum
+  final static int W = 2; // write quorum
   final static int T = 5; // timeout
 
   public static void main(String[] args) {
@@ -104,6 +104,20 @@ public class Main {
 
     // update item
     c1.tell(new ClientMessage.Update(new Item(15, "VALUE15_updated"), n1), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(15, "CONFLICTING_15"), n3), ActorRef.noSender());
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    // read updated item
+    c2.tell(new ClientMessage.Get(new Item(15, ""), n1), ActorRef.noSender());
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    // update item
+    c1.tell(new ClientMessage.Update(new Item(15, "CONFLICTING_15"), n3), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(15, "LAST VERSION"), n2), ActorRef.noSender());
 
     try { Thread.sleep(1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
