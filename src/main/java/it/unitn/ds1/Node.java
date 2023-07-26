@@ -375,25 +375,51 @@ public class Node extends AbstractActor {
   private void onLeaveMsg(Message.LeaveMsg msg){
     System.out.println("["+this.getSelf().path().name()+"] [onLeaveMsg]"); 
     
-    // remove the present node from the list of active nodes
-    this.peers.remove(this.key);
-
-    HashMap<Integer, HashSet<Item>> responsibleNode = new HashMap<>(); // responsibleNode[k] :: list of item keys the node k is
+    HashMap<Integer, HashSet<Integer>> responsibleNode = new HashMap<>(); // responsibleNode[k] :: list of item keys the node k is
                                                                           // responsible for after the departure of the present node
-    this.peers.keySet().forEach((peerKey) -> {responsibleNode.put(peerKey, new HashSet<>());});                                                                            
-    
+    this.peers.keySet().forEach((peerKey) -> {responsibleNode.put(peerKey, new HashSet<>());});  
+
+    // fill the list of responsible node (responsibleNode) for each item in this.items
     for(Integer itemKey : this.items.keySet()){
       Set<Integer> responsibleNodeKeys = this.getResponsibleNode(itemKey);
       responsibleNodeKeys.forEach((respNodeKey) -> {
-        HashSet<Item> respNodeSet = responsibleNode.get(respNodeKey);
-        respNodeSet.add(new Item(this.items.get(itemKey).key, this.items.get(itemKey).value, this.items.get(itemKey).version));
+        if(respNodeKey != this.key){
+          HashSet<Integer> respNodeSet = responsibleNode.get(respNodeKey);
+          respNodeSet.add(itemKey);
+        }
+      });
+    }
+
+    // remove the present node from the list of active nodes
+    this.peers.remove(this.key);                                                                          
+    
+    // after the removal of the present node we compute again the responsabilites for each item in this.items
+    // and we keep only the differences, i.e. if the node was not responsible for this item before, but it becomes
+    // responsible of the item only now that the present node left the ring
+    for(Integer itemKey : this.items.keySet()){
+      Set<Integer> responsibleNodeKeys = this.getResponsibleNode(itemKey);
+      responsibleNodeKeys.forEach((respNodeKey) -> {
+        if(responsibleNode.get(respNodeKey).contains(itemKey)){ // in this case the node was already resoponsible for the item even before the departure of the present node
+          responsibleNode.get(respNodeKey).remove(itemKey);
+        }else{
+          responsibleNode.get(respNodeKey).add(itemKey);
+        }
       });
     }
 
     // the node announces to every other node that it is leaving
     // the node passes its data items to the nodes that become responsible for them after its departure
     this.peers.forEach((k, p) -> {
-      p.tell(new Message.AnnounceDeparture(this.key, Collections.unmodifiableSet(responsibleNode.get(k))), this.getSelf());
+
+      // prepare announce departure message
+      Set<Item> announceDepartureSet = new HashSet<>();
+      responsibleNode.get(k).forEach((ik) -> {
+        announceDepartureSet.add( new Item( ik, 
+                                            this.items.get(ik).getValue(),
+                                            this.items.get(ik).getVersion()));
+        });
+
+      p.tell(new Message.AnnounceDeparture(this.key, Collections.unmodifiableSet(announceDepartureSet)), this.getSelf());
     });
 
     // remove all the peers since the node is no more part of the ring
@@ -416,15 +442,10 @@ public class Node extends AbstractActor {
 
     // add data items of which the present node is responsible for after the departure of the leaving node
     for(Item item : msg.keyItemSet){
-      // the present node was not responsible for this item before
-      // OR
-      // the node which is leaving had a higher version of the item
-      if(!this.items.containsKey(item.key) || this.items.get(item.getKey()).getVersion() < item.getVersion()){
-        Item updatedItem = new Item(  item.key,
-                                      item.getValue(),
-                                      item.getVersion());
-        this.items.put(updatedItem.getKey(), updatedItem);
-      }
+      Item updatedItem = new Item(  item.key,
+                                    item.getValue(),
+                                    item.getVersion());
+      this.items.put(updatedItem.getKey(), updatedItem);  //TODO: riflettere se sono veramente sicuro al 100% che questi item non gli ho mai avuti
     }
 
   }
@@ -479,7 +500,7 @@ public class Node extends AbstractActor {
     }
 
     // the node add itself to the list of nodes currently active
-    this.peers.put(this.key, this.getSelf());
+    this.peers.put(this.key, this.getSelf()); // TODO: riflettere se serve
 
     // the node which is recovering should discard those items that are no longer under its responsability
     for(Integer ik : this.items.keySet()){
@@ -488,6 +509,8 @@ public class Node extends AbstractActor {
         this.items.remove(ik);
       }
     }
+
+    // TODO: inviare quelli che ho così mi manda solo le differenze
 
     // the node which is recovering should obtain the items that are now under its responsability
     // this information can be retrived from the clockwise neighbor (which holds all items it needs)
@@ -506,6 +529,7 @@ public class Node extends AbstractActor {
     // It is important to check item version throughout this process to avoid overwriting
     // updated item or update old version items.
     for(Item item : msg.resSet) {
+      // TODO: rimuovere parte dopo l'or (tenere solo !this.items.containsKey(item.key))
       if(!this.items.containsKey(item.key) ||  (this.items.containsKey(item.key) && this.items.get(item.key).getVersion() < item.getVersion())){
         this.items.put(item.key, new Item(item.key, item.value, item.version));
       }
