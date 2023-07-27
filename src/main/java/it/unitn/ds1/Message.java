@@ -157,6 +157,9 @@ public class Message{
     // this timeout message is sent when there is no response for ReqActiveNodeList message request
     public static class Timeout_ReqActiveNodeList implements Serializable{}
 
+    // this timeout message is sent when there is no response for ReqActiveNodeList message request
+    public static class Timeout_ReqActiveNodeList_recover implements Serializable{}
+
     // this timeout message is sent when there is no response for ReqDataItemsResponsibleFor message request
     public static class Timeout_ReqDataItemsResponsibleFor implements Serializable{}
 

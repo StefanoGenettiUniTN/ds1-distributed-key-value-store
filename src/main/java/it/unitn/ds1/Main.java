@@ -405,6 +405,54 @@ public class Main {
 
     // ... end test timeout JoinReadOperationReq
 
+    // test timeout ReqActiveNodeList_recover
+    System.out.println("");
+    System.out.println("################################### test timeout ReqActiveNodeList_recover");
+    System.out.println("");
+
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n5 crash
+    n5.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n6 crash
+    n6.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(2000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n6 recover
+    n6.tell(new Message.RecoveryMsg(n5), ActorRef.noSender());
+
+    try { Thread.sleep(10000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n5 recover
+    n5.tell(new Message.RecoveryMsg(n7), ActorRef.noSender());
+
+    try { Thread.sleep(2000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n6 recover
+    n6.tell(new Message.RecoveryMsg(n5), ActorRef.noSender());
+
+    try { Thread.sleep(2000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// n6 print current list of peers
+    n6.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n5.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    // ... end test timeout timeout ReqActiveNodeList_recover
+
     try {
       System.out.println(">>> Press ENTER to exit <<<");
       System.in.read();

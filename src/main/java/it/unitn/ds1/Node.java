@@ -32,6 +32,7 @@ public class Node extends AbstractActor {
 
   private HashMap<Integer, HashSet<Integer>> nodeKeyToResponsibleItem; // data structure used in the context of the leave opreation
   private boolean flag_reqActiveNodeList;
+  private boolean flag_reqActiveNodeList_recover;
   private boolean flag_reqDataItemsResponsibleFor;
 
   //-------------
@@ -50,6 +51,7 @@ public class Node extends AbstractActor {
     this.join_update_item_response_counter = 0;
     this.leave_response_counter = 0;
     this.flag_reqActiveNodeList = false;
+    this.flag_reqActiveNodeList_recover = false;
     this.flag_reqDataItemsResponsibleFor = false;
   }
 
@@ -96,6 +98,7 @@ public class Node extends AbstractActor {
       .match(Message.Timeout_ReqDataItemsResponsibleFor.class, this::onTimeout_ReqDataItemsResponsibleFor)
       .match(Message.Timeout_JoinReadOperationReq.class, this::onTimeout_JoinReadOperationReq)
       .match(Message.Timeout_AnnounceDeparture.class, this::onTimeout_AnnounceDeparture)
+      .match(Message.Timeout_ReqActiveNodeList_recover.class, this::onTimeout_ReqActiveNodeList_recover_ignore)
       .build();
   }
 
@@ -105,6 +108,7 @@ public class Node extends AbstractActor {
       .match(Message.RecoveryMsg.class, this::onRecoveryMsg)
       .match(Message.ResActiveNodeList.class, this::onResActiveNodeList_recovery)
       .match(Message.ResDataItemsResponsibleFor.class, this::onResDataItemsResponsibleFor_recovery)
+      .match(Message.Timeout_ReqActiveNodeList_recover.class, this::onTimeout_ReqActiveNodeList_recover)
       .matchAny(msg -> {
         System.out.println(getSelf().path().name() + " ignoring " + msg.getClass().getSimpleName() + " (crashed)");
       })
@@ -639,12 +643,35 @@ public class Node extends AbstractActor {
     this.peers.clear();
 
     // i. requests the current set of nodes from a node specified in the recovery request;
+    this.flag_reqActiveNodeList_recover = false;
     bootstrappingPeer.tell(new Message.ReqActiveNodeList(), this.getSelf());
+
+    // if the bootstrapping peer does not send a response before the timeout
+    // we abort the recovery process
+    getContext().system().scheduler().scheduleOnce(
+      Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
+      this.getSelf(),                             // destination actor reference
+      new Message.Timeout_ReqActiveNodeList_recover(),    // the message to send,
+      getContext().system().dispatcher(),         // system dispatcher
+      this.getSelf()                              // source of the message (myself)
+    );
   }
+
+  // the bootstrapping node is not sending a response
+  // --> abort recovery operation
+  private void onTimeout_ReqActiveNodeList_recover(Message.Timeout_ReqActiveNodeList_recover msg){
+    if(this.flag_reqActiveNodeList_recover == false){
+      System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReqActiveNodeList_recover] ABORT RECOVERY because no ResActiveNodeList has been received before timeout expiration.");
+    }
+  }
+
+  // if the node is not crash and receives a Timeout_ReqActiveNodeList_recover message it has to ignore it
+  private void onTimeout_ReqActiveNodeList_recover_ignore(Message.Timeout_ReqActiveNodeList_recover msg){}
 
   // The bootstrapping node send the current list of the active nodes
   // to the node which is recovering from crash
   private void onResActiveNodeList_recovery(Message.ResActiveNodeList msg){
+    this.flag_reqActiveNodeList_recover = true; // finally the ResActiveNodeList has been received, we can go on with the recovery operation without aborting
     System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList_recovery]");
 
     // retrive message data and initialize the list of peers
