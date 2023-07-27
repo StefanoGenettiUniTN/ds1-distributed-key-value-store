@@ -159,6 +159,10 @@ public class Message{
 
     // this timeout message is sent when there is no response for ReqDataItemsResponsibleFor message request
     public static class Timeout_ReqDataItemsResponsibleFor implements Serializable{}
+
+    // this timeout message is sent when the joining node does not receive a ReadOperationReq message from one
+    // or more of the nodes that are expected
+    public static class Timeout_JoinReadOperationReq implements Serializable{}
     
     // this timeout message is sent when the leaving node does not receive an acknowledgement from one or more
     // of the nodes that should become responsible of its data items after the departure

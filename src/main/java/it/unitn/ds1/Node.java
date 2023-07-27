@@ -94,6 +94,7 @@ public class Node extends AbstractActor {
       .match(Message.Timeout.class, this::onTimeout)
       .match(Message.Timeout_ReqActiveNodeList.class, this::onTimeout_ReqActiveNodeList)
       .match(Message.Timeout_ReqDataItemsResponsibleFor.class, this::onTimeout_ReqDataItemsResponsibleFor)
+      .match(Message.Timeout_JoinReadOperationReq.class, this::onTimeout_JoinReadOperationReq)
       .match(Message.Timeout_AnnounceDeparture.class, this::onTimeout_AnnounceDeparture)
       .build();
   }
@@ -147,7 +148,7 @@ public class Node extends AbstractActor {
     // if the bootstrapping peer does not send a response before the timeout
     // we abort the join process
     getContext().system().scheduler().scheduleOnce(
-      Duration.create(this.T, TimeUnit.SECONDS),  // after 1 second
+      Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
       this.getSelf(),                             // destination actor reference
       new Message.Timeout_ReqActiveNodeList(),    // the message to send,
       getContext().system().dispatcher(),         // system dispatcher
@@ -200,7 +201,7 @@ public class Node extends AbstractActor {
     // if the clocwise neighbour peer does not send a response before the timeout
     // we abort the join operation
     getContext().system().scheduler().scheduleOnce(
-      Duration.create(this.T, TimeUnit.SECONDS),  // after 1 second
+      Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
       this.getSelf(),                             // destination actor reference
       new Message.Timeout_ReqDataItemsResponsibleFor(),   // the message to send,
       getContext().system().dispatcher(),         // system dispatcher
@@ -213,7 +214,7 @@ public class Node extends AbstractActor {
   private void onTimeout_ReqDataItemsResponsibleFor(Message.Timeout_ReqDataItemsResponsibleFor msg){
     if(this.flag_reqDataItemsResponsibleFor == false){
       System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReqDataItemsResponsibleFor] ABORT JOIN because no ResDataItemsResponsibleFor has been received before timeout expiration.");
-      this.peers.clear();
+      this.peers.clear(); // TODO: facendo così, nel report si può parlare di optimistic writeahead log? O una roba del genere?
     }
   }
 
@@ -253,6 +254,7 @@ public class Node extends AbstractActor {
     }
     System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor] Now I am responsible for the following data items:"+this.items.values());
 
+    join_update_item_response_counter = 0;
     if(!this.items.isEmpty()){
 
       //--- perform read operations to ensure that the received items are up to date. // TODO: riflettere sui timeout
@@ -310,6 +312,9 @@ public class Node extends AbstractActor {
       // inviando solo ai nodi che effettivamente possono essere i responsabili di un item
       //---
     }
+
+    System.out.println("join_update_item_response_counter = "+join_update_item_response_counter);
+
     // in the case this.join_update_item_response_counter==0 then it is not necessary to perform any read operation
     // and the node can immediately announce its presence to every node in the system
     if(this.join_update_item_response_counter == 0){
@@ -325,6 +330,26 @@ public class Node extends AbstractActor {
           p.tell(announcePresence, this.getSelf());
         }
       });
+    }else{
+      // if at least one of the peers which should send a JoinReadOperationRes message, does not reply within
+      // the timeout interval, we abort the join operation
+      getContext().system().scheduler().scheduleOnce(
+        Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
+        this.getSelf(),                             // destination actor reference
+        new Message.Timeout_JoinReadOperationReq(), // the message to send,
+        getContext().system().dispatcher(),         // system dispatcher
+        this.getSelf()                              // source of the message (myself)
+      );
+    }
+  }
+
+  // at least one of the peers which should have sent a JoinReadOperationRes message, does not reply
+  // within the timeout interval, we abort the join operation and rollback the state
+  private void onTimeout_JoinReadOperationReq(Message.Timeout_JoinReadOperationReq msg){
+    if(this.join_update_item_response_counter > 0){  // there are still nodes which have not sent the JoinReadOperationRes messge
+      System.out.println("["+this.getSelf().path().name()+"] [onTimeout_JoinReadOperationReq] ABORT JOIN because not all the expected nodes have sent a JoinReadOperationRes message");
+      this.peers.clear();
+      this.items.clear();
     }
   }
 
@@ -498,7 +523,7 @@ public class Node extends AbstractActor {
       // if the peers which should become responsible of some of the data items of the present node
       // does not send an ack withing the timeout interval,  we abort the leave operation
       getContext().system().scheduler().scheduleOnce(
-        Duration.create(this.T, TimeUnit.SECONDS),  // after 1 second
+        Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
         this.getSelf(),                             // destination actor reference
         new Message.Timeout_AnnounceDeparture(),    // the message to send,
         getContext().system().dispatcher(),         // system dispatcher
