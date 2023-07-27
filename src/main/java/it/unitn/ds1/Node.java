@@ -15,7 +15,7 @@ public class Node extends AbstractActor {
   private final int R;
   private final int W;
   private final int T;
-  private final int MAXRANDOMDELAYTIME = 3;
+  private final int MAXRANDOMDELAYTIME = 1;
   private final Random rnd;
   private int counterRequest;
   private final Map<Integer, ActorRef> peers;   // peers[K] points to the node in the group with key K
@@ -125,6 +125,11 @@ public class Node extends AbstractActor {
 
     // ask to the bootstrapping peer the current list of active nodes
     Message.ReqActiveNodeList reqActiveNodeListMsg = new Message.ReqActiveNodeList();
+
+    // model a random network/processing delay
+    try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
     msg_bootstrappingPeer.tell(reqActiveNodeListMsg, this.getSelf());
   }
 
@@ -137,6 +142,11 @@ public class Node extends AbstractActor {
     // send the list of currently active nodes
     Map<Integer, ActorRef> activeNodes = Collections.unmodifiableMap(this.peers);
     Message.ResActiveNodeList msg_response = new Message.ResActiveNodeList(activeNodes);
+
+    // model a random network/processing delay
+    try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
     this.getSender().tell(msg_response, this.getSelf());
   }
 
@@ -157,6 +167,11 @@ public class Node extends AbstractActor {
 
     // request data items the joining node is responsible for from its clockwise neighbor (which holds all items it needs)
     Message.ReqDataItemsResponsibleFor clockwiseNeighborRequest = new Message.ReqDataItemsResponsibleFor(this.key);
+
+    // model a random network/processing delay
+    try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
     clockwiseNeighbor.tell(clockwiseNeighborRequest, this.getSelf());
   }
 
@@ -194,6 +209,11 @@ public class Node extends AbstractActor {
 
     // send the list of data item that the joining node is responsible for
     Message.ResDataItemsResponsibleFor msg_response = new Message.ResDataItemsResponsibleFor(Collections.unmodifiableSet(resSet));
+
+    // model a random network/processing delay
+    try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
     this.getSender().tell(msg_response, this.getSelf());
   }
 
@@ -256,6 +276,9 @@ public class Node extends AbstractActor {
       Message.JoinReadOperationReq msg_JoinReadOperationReq = new Message.JoinReadOperationReq(Collections.unmodifiableSet(itemSet));
       for(ActorRef dest : readDestinationNodes){
         if(!dest.equals(this.getSender())){  // no read request is sent to the clockwise neighbor which has just sent the current set of items TODO: oppure ci sta mandarlo anche a lui?
+          // model a random network/processing delay
+          try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+          catch (InterruptedException e) { e.printStackTrace(); }
           dest.tell(msg_JoinReadOperationReq, this.getSelf());
           this.join_update_item_response_counter++;
         }
@@ -276,6 +299,9 @@ public class Node extends AbstractActor {
       Message.AnnouncePresence announcePresence = new Message.AnnouncePresence(this.key, Collections.unmodifiableSet(announcePresenceKeyItemSet));
       this.peers.forEach((k, p) -> {
         if(!p.equals(this.getSelf())){
+          // model a random network/processing delay
+          try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+          catch (InterruptedException e) { e.printStackTrace(); }
           p.tell(announcePresence, this.getSelf());
         }
       });
@@ -303,6 +329,11 @@ public class Node extends AbstractActor {
     // send the update version of the requested items
     // to the node which is joining the network
     Message.JoinReadOperationRes joinReadOperationResponse = new Message.JoinReadOperationRes(Collections.unmodifiableSet(updatedItems));
+
+    // model a random network/processing delay
+    try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
     this.getSender().tell(joinReadOperationResponse, this.getSelf());
   }
 
@@ -339,6 +370,9 @@ public class Node extends AbstractActor {
       Message.AnnouncePresence announcePresence = new Message.AnnouncePresence(this.key, Collections.unmodifiableSet(announcePresenceKeyItemSet));
       this.peers.forEach((k, p) -> {
         if(!p.equals(this.getSelf())){
+          // model a random network/processing delay
+          try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+          catch (InterruptedException e) { e.printStackTrace(); }
           p.tell(announcePresence, this.getSelf());
         }
       });
@@ -398,6 +432,9 @@ public class Node extends AbstractActor {
     // the node announces to every other node that it is leaving
     // the node passes its data items to the nodes that become responsible for them after its departure
     this.peers.forEach((k, p) -> {
+      // model a random network/processing delay
+      try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+      catch (InterruptedException e) { e.printStackTrace(); }
       p.tell(new Message.AnnounceDeparture(this.key, Collections.unmodifiableSet(responsibleNode.get(k))), this.getSelf());
     });
 
@@ -468,6 +505,9 @@ public class Node extends AbstractActor {
     this.peers.clear();
 
     // i. requests the current set of nodes from a node specified in the recovery request;
+    // model a random network/processing delay
+    try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+    catch (InterruptedException e) { e.printStackTrace(); }
     bootstrappingPeer.tell(new Message.ReqActiveNodeList(), this.getSelf());
   }
 
@@ -598,6 +638,9 @@ public class Node extends AbstractActor {
     if(nR < this.R) {
       for (int node : respNodes) {
         if(node != this.key) {
+          // model a random network/processing delay
+          try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+          catch (InterruptedException e) { e.printStackTrace(); }
           (peers.get(node)).tell(new Message.Read(counterRequest, item), this.getSelf());
         }
       }
@@ -612,6 +655,9 @@ public class Node extends AbstractActor {
     } else if (nR == this.R){ // this should happen only if R is set to 1
       System.out.println("["+this.getSelf().path().name()+"] [onDirectReadItemInformation] Owner");
       this.requests.remove(counterRequest);
+      // model a random network/processing delay
+      try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+      catch (InterruptedException e) { e.printStackTrace(); }
       req.getClient().tell(new ClientMessage.GetResult(Result.SUCCESS, item), ActorRef.noSender());
     }
   }
@@ -621,6 +667,9 @@ public class Node extends AbstractActor {
     Item item = this.items.get(msg.item.getKey());
     if(item != null) {
       System.out.println("[" + this.getSelf().path().name() + "] [onRead] Owner: " + key + " ITEM: " + item);
+      // model a random network/processing delay
+      try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+      catch (InterruptedException e) { e.printStackTrace(); }
       this.getSender().tell(new Message.ReadItemInformation(msg.requestId, item), ActorRef.noSender());
     }
   }
@@ -643,6 +692,11 @@ public class Node extends AbstractActor {
 
       if(nR == this.R) {
         this.requests.remove(msg.requestId);
+
+        // model a random network/processing delay
+        try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+        catch (InterruptedException e) { e.printStackTrace(); }
+
         req.getClient().tell(new ClientMessage.GetResult(Result.SUCCESS, msg.item), ActorRef.noSender());
       }
     }
@@ -663,6 +717,9 @@ public class Node extends AbstractActor {
     if(this.requests.containsKey(msg.requestId) == true){
       Request req = this.requests.remove(msg.requestId);
       if(req.getType() == Type.GET) {
+        // model a random network/processing delay
+        try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+        catch (InterruptedException e) { e.printStackTrace(); }
         req.getClient().tell(new ClientMessage.GetResult(Result.ERROR, null), ActorRef.noSender());
       } else {
 
@@ -674,9 +731,18 @@ public class Node extends AbstractActor {
 
         for (int node : nodes) {
           if (node != this.key) {
+            // model a random network/processing delay
+            try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+            catch (InterruptedException e) { e.printStackTrace(); }
+
             (peers.get(node)).tell(new Message.ReleaseClock(msg.itemId, msg.coordinatorId), this.getSelf());
           }
         }
+
+        // model a random network/processing delay
+        try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+        catch (InterruptedException e) { e.printStackTrace(); }
+
         req.getClient().tell(new ClientMessage.UpdateResult(Result.ERROR, null), ActorRef.noSender());
       }
     }
@@ -717,6 +783,10 @@ public class Node extends AbstractActor {
       if (nW < this.W) {
         for (int node : respNodes) {
           if (node != this.key) {
+            // model a random network/processing delay
+            try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+            catch (InterruptedException e) { e.printStackTrace(); }
+
             (peers.get(node)).tell(new Message.Version(this.key, counterRequest, item), this.getSelf());
           }
         }
@@ -732,12 +802,18 @@ public class Node extends AbstractActor {
         item.setVersion(item.getVersion() + 1);
         this.locks.remove(item.getKey());
         this.requests.remove(counterRequest);
+        // model a random network/processing delay
+        try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+        catch (InterruptedException e) { e.printStackTrace(); }
         req.getClient().tell(new ClientMessage.UpdateResult(Result.SUCCESS, item), ActorRef.noSender());
         this.items.put(item.getKey(), item);
         System.out.println("[" + this.getSelf().path().name() + "] [onDirectWriteInformation] Owner: lock: item " + item.getKey() +  " -> lock " + lock + " -> coordinator " + this.key);
       }
     } else {
       System.out.println("["+this.getSelf().path().name()+"] [onUpdate] Coordinator: Locked  item " + item.getKey() + " -> lock " + lock + " -> coordinator " + this.key);
+      // model a random network/processing delay
+      try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+      catch (InterruptedException e) { e.printStackTrace(); }
       this.getSender().tell(new ClientMessage.UpdateResult(Result.ERROR, null), ActorRef.noSender());
     }
   }
@@ -749,10 +825,15 @@ public class Node extends AbstractActor {
     if(lock == null || (lock != null && (lock == -1 || lock == msg.coordinatorId))) {
       System.out.println("[" + this.getSelf().path().name() + "] [onVersion] Owner lock: item key " + item.getKey() +  " -> lock " + lock + " -> coordinator: " + msg.coordinatorId + " (on node): -> " + this.key);
       Item itemNode = this.items.get(item.getKey());
+      this.locks.put(item.key, msg.coordinatorId);
+
       if (itemNode != null) {
-        this.locks.put(item.key, msg.coordinatorId);
         item.setVersion(itemNode.getVersion());
       }
+
+      // model a random network/processing delay
+      try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+      catch (InterruptedException e) { e.printStackTrace(); }
 
       this.getSender().tell(new Message.UpdateVersion(msg.requestId, item), this.getSelf());
     } else {
@@ -780,9 +861,18 @@ public class Node extends AbstractActor {
         itemReq.setVersion(itemReq.getVersion() + 1);
 
         this.requests.remove(msg.requestId);
+
+        // model a random network/processing delay
+        try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+        catch (InterruptedException e) { e.printStackTrace(); }
+
         req.getClient().tell(new ClientMessage.UpdateResult(Result.SUCCESS, itemReq), ActorRef.noSender());
 
         for (int node : getResponsibleNode(item.getKey())) {
+          // model a random network/processing delay
+          try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+          catch (InterruptedException e) { e.printStackTrace(); }
+
           (peers.get(node)).tell(new Message.Write(itemReq), this.getSelf());
         }
       }

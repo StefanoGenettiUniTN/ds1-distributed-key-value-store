@@ -7,9 +7,10 @@ import java.util.Random;
 
 public class Client extends AbstractActor {
 
+  //
   private boolean ongoingOperation = false;
   private final Random rnd;
-  private final int MAXRANDOMDELAYTIME = 3;
+  private final int MAXRANDOMDELAYTIME = 1; //MAX SECONDS OF DELAY
 
   public Client() {
     this.ongoingOperation  = false;
@@ -46,7 +47,7 @@ public class Client extends AbstractActor {
       System.out.println("[" + this.getSelf().path().name() + "] [onGet] Client");
 
       // model a random network/processing delay
-      try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME)); }
+      try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
       catch (InterruptedException e) { e.printStackTrace(); }
 
       (msg.coordinator).tell(new Message.GetRequest(msg.item), this.getSelf());
@@ -72,7 +73,7 @@ public class Client extends AbstractActor {
       System.out.println("[" + this.getSelf().path().name() + "] [onUpdate] Client");
 
       // model a random network/processing delay
-      try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME)); }
+      try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
       catch (InterruptedException e) { e.printStackTrace(); }
 
       (msg.coordinator).tell(new Message.UpdateRequest(msg.item), this.getSelf());

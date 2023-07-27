@@ -10,7 +10,7 @@ public class Main {
   final static int N = 2; // degree of replication
   final static int R = 2; // read quorum
   final static int W = 2; // write quorum
-  final static int T = 2; // timeout
+  final static int T = 5; // timeout
 
   public static void main(String[] args) {
     if(R + W <= N || W <= N/2){
@@ -29,7 +29,7 @@ public class Main {
     //// send init system to n1
     n1.tell(new Message.InitSystem(), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     n1.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
@@ -40,7 +40,7 @@ public class Main {
     //// send to n2 the message to allow it joininig the network
     n2.tell(new Message.JoinMsg(30, n1), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     n2.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
@@ -48,16 +48,16 @@ public class Main {
     ///// node n2 crashes
     n2.tell(new Message.CrashMsg(), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     //// create node n3
     ActorRef n3 = system.actorOf(Node.props(40, N, R, W, T),"n3");
 
-    //// send to n3 the message to allow it joininig the network
+    //// send to n3 the message to allow it joining the network
     n3.tell(new Message.JoinMsg(40, n1), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     n3.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
@@ -69,7 +69,7 @@ public class Main {
     //// node n2 recovery
     n2.tell(new Message.RecoveryMsg(n1), Actor.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     n2.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
@@ -85,21 +85,25 @@ public class Main {
     c1.tell(new ClientMessage.Update(new Item(7, "VALUE7"), n2), ActorRef.noSender());
     c1.tell(new ClientMessage.Update(new Item(8, "VALUE8"), n3), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     c1.tell(new ClientMessage.Update(new Item(15, "VALUE15"), n1), ActorRef.noSender());
+
+    try { Thread.sleep(2 * T * 1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
     c1.tell(new ClientMessage.Update(new Item(60, "VALUE60"), n2), ActorRef.noSender());
     c2.tell(new ClientMessage.Update(new Item(25, "VALUE25"), n3), ActorRef.noSender());
     c2.tell(new ClientMessage.Update(new Item(28, "VALUE28"), n1), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     c2.tell(new ClientMessage.Update(new Item(33, "VALUE33"), n2), ActorRef.noSender());
-    c2.tell(new ClientMessage.Update(new Item(49, "VALUE49"), n3), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(49, "VALUE49"), n3), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     // perform read operations
@@ -107,36 +111,40 @@ public class Main {
     c1.tell(new ClientMessage.Get(new Item(15, ""),n1), ActorRef.noSender());
     c1.tell(new ClientMessage.Get(new Item(33, ""),n1), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
+
+    System.out.println("LOCK TEST 1");
 
     // update item
     c1.tell(new ClientMessage.Update(new Item(15, "VALUE15_updated"), n1), ActorRef.noSender());
-    c1.tell(new ClientMessage.Update(new Item(15, "CONFLICTING_15"), n3), ActorRef.noSender());
+    c2.tell(new ClientMessage.Update(new Item(15, "CONFLICTING_15"), n3), ActorRef.noSender());
 
-    try { Thread.sleep(2000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     // read updated item
     c2.tell(new ClientMessage.Get(new Item(15, ""), n1), ActorRef.noSender());
 
-    try { Thread.sleep(5000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
+
+    System.out.println("LOCK TEST 2");
 
     // update item
-    c1.tell(new ClientMessage.Update(new Item(15, "CONFLICTING_15"), n3), ActorRef.noSender());
+    c2.tell(new ClientMessage.Update(new Item(15, "CONFLICTING_15"), n3), ActorRef.noSender());
     c1.tell(new ClientMessage.Update(new Item(15, "LAST VERSION"), n2), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     // read updated item
     c2.tell(new ClientMessage.Get(new Item(15, ""), n1), ActorRef.noSender());
-    c2.tell(new ClientMessage.Get(new Item(49, ""), n3), ActorRef.noSender());
+    c1.tell(new ClientMessage.Get(new Item(49, ""), n3), ActorRef.noSender());
     //...end step 2
 
     // 3. Join
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     ActorRef n4 = system.actorOf(Node.props(10, N, R, W, T),"n4");
@@ -144,30 +152,32 @@ public class Main {
 
     n4.tell(new Message.JoinMsg(10, n1), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     n5.tell(new Message.JoinMsg(50, n3), ActorRef.noSender());    
     // ...end join
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
+
+    System.out.println("LOCK TEST 3");
 
     c2.tell(new ClientMessage.Update(new Item(49, "CONFLICTING_49"), n1), ActorRef.noSender());
     c1.tell(new ClientMessage.Update(new Item(49, "LAST VERSION 49"), n2), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
 
     c2.tell(new ClientMessage.Get(new Item(49, ""), n3), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     // print item set of the nodes
     
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     n1.tell(new Message.PrintItemList(), ActorRef.noSender());
@@ -180,14 +190,14 @@ public class Main {
 
     // leaving
     
-    try { Thread.sleep(2000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     //// leave n1
     n1.tell(new Message.LeaveMsg(), ActorRef.noSender());
 
     // print item set of the nodes
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
     n2.tell(new Message.PrintItemList(), ActorRef.noSender());
     n3.tell(new Message.PrintItemList(), ActorRef.noSender());
@@ -199,7 +209,7 @@ public class Main {
     n2.tell(new Message.LeaveMsg(), ActorRef.noSender());
 
     // print item set of the nodes
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
     n3.tell(new Message.PrintItemList(), ActorRef.noSender());
     n4.tell(new Message.PrintItemList(), ActorRef.noSender());
@@ -210,7 +220,7 @@ public class Main {
     n3.tell(new Message.LeaveMsg(), ActorRef.noSender());
 
     // print item set of the nodes
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
     n4.tell(new Message.PrintItemList(), ActorRef.noSender());
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
@@ -220,7 +230,7 @@ public class Main {
     n4.tell(new Message.LeaveMsg(), ActorRef.noSender());
 
     // print item set of the nodes
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
     // ...end print item set of the nodes
