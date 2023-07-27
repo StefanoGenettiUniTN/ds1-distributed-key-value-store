@@ -303,8 +303,36 @@ public class Main {
     catch (InterruptedException e) { e.printStackTrace(); }
     n8.tell(new Message.PrintItemList(), ActorRef.noSender());
     // ...end print item set of the nodes
-    // ... end test
 
+    // ... end test timeout reqActiveNodeList
+
+    // test timeout reqDataItemsResponsibleFor
+    
+    ///// node n7 crashes
+    n7.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    ///// join n8
+    n8.tell(new Message.JoinMsg(63, n5), ActorRef.noSender());
+
+    try { Thread.sleep(10000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    ///// node n7 recover
+    n7.tell(new Message.RecoveryMsg(n5), ActorRef.noSender());
+    
+    try { Thread.sleep(2000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// n8 print current list of peers
+    n8.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n8.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ... end test timeout reqDataItemsResponsibleFor
 
     try {
       System.out.println(">>> Press ENTER to exit <<<");

@@ -27,7 +27,8 @@ public class Node extends AbstractActor {
                                                   // version of the items
   
   private boolean flag_reqActiveNodeList;
-  private Cancellable timer_reqActiveNodeList;
+  private boolean flag_reqDataItemsResponsibleFor;
+
   //-------------
 
   public Node(int _key, int n, int r, int w, int t){
@@ -39,10 +40,11 @@ public class Node extends AbstractActor {
     this.peers = new TreeMap<>();
     this.items = new HashMap<>();
     this.requests = new HashMap<>();
-    counterRequest = 0;
+    this.counterRequest = 0;
 
-    join_update_item_response_counter = 0;
-    flag_reqActiveNodeList = false;
+    this.join_update_item_response_counter = 0;
+    this.flag_reqActiveNodeList = false;
+    this.flag_reqDataItemsResponsibleFor = false;
   }
 
   @Override
@@ -83,6 +85,7 @@ public class Node extends AbstractActor {
       .match(Message.CrashMsg.class, this::onCrashMsg)
       .match(Message.Timeout.class, this::onTimeout)
       .match(Message.Timeout_ReqActiveNodeList.class, this::onTimeout_ReqActiveNodeList)
+      .match(Message.Timeout_ReqDataItemsResponsibleFor.class, this::onTimeout_ReqDataItemsResponsibleFor)
       .build();
   }
 
@@ -133,27 +136,22 @@ public class Node extends AbstractActor {
     msg_bootstrappingPeer.tell(reqActiveNodeListMsg, this.getSelf());
 
     // if the bootstrapping peer does not send a response before the timeout
-    // we retransmit the ReqActiveNodeList until we get a response
-    this.timer_reqActiveNodeList = getContext().system().scheduler().scheduleWithFixedDelay(
-      Duration.create(1, TimeUnit.SECONDS),                    // after 1 second
-      Duration.create(1, TimeUnit.SECONDS),                    // how frequently generate them
-      this.getSelf(),                                                 // destination actor reference
-      new Message.Timeout_ReqActiveNodeList(msg_bootstrappingPeer),   // the message to send,
-      getContext().system().dispatcher(),                             // system dispatcher
-      this.getSelf()                                                  // source of the message (myself)
+    // we abort the join process
+    getContext().system().scheduler().scheduleOnce(
+      Duration.create(this.T, TimeUnit.SECONDS),  // after 1 second
+      this.getSelf(),                             // destination actor reference
+      new Message.Timeout_ReqActiveNodeList(),    // the message to send,
+      getContext().system().dispatcher(),         // system dispatcher
+      this.getSelf()                              // source of the message (myself)
     );
   }
 
   // the bootstrapping node is not sending a response
-  // --> retransmit
-  private void onTimeout_ReqActiveNodeList(Message.Timeout_ReqActiveNodeList msg){  // TODO: se si vuole, potenzialmente di potrebbe gestire tutte le retransmission con un solo tipo di messaggio che contiene: Destination, Messaggio da inviare, flag da controllare
+  // --> abort join operation
+  private void onTimeout_ReqActiveNodeList(Message.Timeout_ReqActiveNodeList msg){  // TODO: se si vuole, potenzialmente di potrebbe gestire tutti i timeout con una sola funzione?
     if(this.flag_reqActiveNodeList == false){
-      System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReqActiveNodeList] retransmit ReqActiveNodeList");
-      ActorRef destination = msg.destination;
-      Message.ReqActiveNodeList reqActiveNodeListMsg = new Message.ReqActiveNodeList();
-      destination.tell(reqActiveNodeListMsg, this.getSelf());
-    }else{
-      this.timer_reqActiveNodeList.cancel();
+      System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReqActiveNodeList] ABORT JOIN because no ResActiveNodeList has been received before timeout expiration.");
+      // in this case, nothing has been done, we can simply do nothing
     }
   }
 
@@ -172,8 +170,7 @@ public class Node extends AbstractActor {
   // The node which is joining the network receives the current list
   // of active nodes from the bootstrapping node
   private void onResActiveNodeList(Message.ResActiveNodeList msg){
-    this.flag_reqActiveNodeList = true; // finally the ResActiveNodeList has been received, we can stop retransmitting the request
-
+    this.flag_reqActiveNodeList = true; // finally the ResActiveNodeList has been received, we can go on with the join operation without aborting
     System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList]");
 
     // retrive message data and initialize the list of peers
@@ -187,8 +184,28 @@ public class Node extends AbstractActor {
     System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList] My clockwise neighbour is: "+clockwiseNeighbor);
 
     // request data items the joining node is responsible for from its clockwise neighbor (which holds all items it needs)
+    this.flag_reqDataItemsResponsibleFor = false;
     Message.ReqDataItemsResponsibleFor clockwiseNeighborRequest = new Message.ReqDataItemsResponsibleFor(this.key);
     clockwiseNeighbor.tell(clockwiseNeighborRequest, this.getSelf());
+
+    // if the clocwise neighbour peer does not send a response before the timeout
+    // we abort the join operation
+    getContext().system().scheduler().scheduleOnce(
+      Duration.create(this.T, TimeUnit.SECONDS),  // after 1 second
+      this.getSelf(),                             // destination actor reference
+      new Message.Timeout_ReqDataItemsResponsibleFor(),   // the message to send,
+      getContext().system().dispatcher(),         // system dispatcher
+      this.getSelf()                              // source of the message (myself)
+    );
+  }
+
+  // the clockwise neighbour node is not sending a response
+  // --> abort join operation
+  private void onTimeout_ReqDataItemsResponsibleFor(Message.Timeout_ReqDataItemsResponsibleFor msg){
+    if(this.flag_reqDataItemsResponsibleFor == false){
+      System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReqDataItemsResponsibleFor] ABORT JOIN because no ResDataItemsResponsibleFor has been received before timeout expiration.");
+      this.peers.clear();
+    }
   }
 
   // receive this request from a joining node "jn" which is requesting to its clockwise neighbor
@@ -218,6 +235,7 @@ public class Node extends AbstractActor {
 
   // the joining node receives the set of data imtems it is responsible for from its clockwise neighbor
   private void onResDataItemsResponsibleFor(Message.ResDataItemsResponsibleFor msg){
+    this.flag_reqDataItemsResponsibleFor = true; // finally the ResDataItemsResponsibleFor has been received, we can go on with the join operation
     System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor]");
 
     // retrive message data and add the data items the joining node is responsible for

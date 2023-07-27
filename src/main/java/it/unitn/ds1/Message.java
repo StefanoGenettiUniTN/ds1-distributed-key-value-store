@@ -146,12 +146,11 @@ public class Message{
     }
 
     // this timeout message is sent when there is no response for ReqActiveNodeList message request
-    public static class Timeout_ReqActiveNodeList implements Serializable{
-        public final ActorRef destination;
-        public Timeout_ReqActiveNodeList(ActorRef _destination) {
-            this.destination = _destination;
-        }
-    }
+    public static class Timeout_ReqActiveNodeList implements Serializable{}
+
+    // this timeout message is sent when there is no response for ReqDataItemsResponsibleFor message request
+    public static class Timeout_ReqDataItemsResponsibleFor implements Serializable{}
+    
 
     // This class represents a message to get an item
     public static class GetRequest implements Serializable {
