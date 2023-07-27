@@ -10,7 +10,7 @@ public class Main {
   final static int N = 2; // degree of replication
   final static int R = 2; // read quorum
   final static int W = 2; // write quorum
-  final static int T = 5; // timeout
+  final static int T = 2; // timeout
 
   public static void main(String[] args) {
     if(R + W <= N || W <= N/2){
@@ -84,10 +84,18 @@ public class Main {
     c1.tell(new ClientMessage.Update(new Item(6, "VALUE6"), n1), ActorRef.noSender());
     c1.tell(new ClientMessage.Update(new Item(7, "VALUE7"), n2), ActorRef.noSender());
     c1.tell(new ClientMessage.Update(new Item(8, "VALUE8"), n3), ActorRef.noSender());
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
     c1.tell(new ClientMessage.Update(new Item(15, "VALUE15"), n1), ActorRef.noSender());
     c1.tell(new ClientMessage.Update(new Item(60, "VALUE60"), n2), ActorRef.noSender());
     c2.tell(new ClientMessage.Update(new Item(25, "VALUE25"), n3), ActorRef.noSender());
     c2.tell(new ClientMessage.Update(new Item(28, "VALUE28"), n1), ActorRef.noSender());
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
     c2.tell(new ClientMessage.Update(new Item(33, "VALUE33"), n2), ActorRef.noSender());
     c2.tell(new ClientMessage.Update(new Item(49, "VALUE49"), n3), ActorRef.noSender());
 
@@ -106,13 +114,13 @@ public class Main {
     c1.tell(new ClientMessage.Update(new Item(15, "VALUE15_updated"), n1), ActorRef.noSender());
     c1.tell(new ClientMessage.Update(new Item(15, "CONFLICTING_15"), n3), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(2000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     // read updated item
     c2.tell(new ClientMessage.Get(new Item(15, ""), n1), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(5000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     // update item
@@ -124,6 +132,7 @@ public class Main {
 
     // read updated item
     c2.tell(new ClientMessage.Get(new Item(15, ""), n1), ActorRef.noSender());
+    c2.tell(new ClientMessage.Get(new Item(49, ""), n3), ActorRef.noSender());
     //...end step 2
 
     // 3. Join
@@ -140,6 +149,21 @@ public class Main {
 
     n5.tell(new Message.JoinMsg(50, n3), ActorRef.noSender());    
     // ...end join
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    c2.tell(new ClientMessage.Update(new Item(49, "CONFLICTING_49"), n1), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(49, "LAST VERSION 49"), n2), ActorRef.noSender());
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+
+    c2.tell(new ClientMessage.Get(new Item(49, ""), n3), ActorRef.noSender());
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
 
     // print item set of the nodes
     

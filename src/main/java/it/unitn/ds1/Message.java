@@ -126,9 +126,21 @@ public class Message{
     // This class represents a timeoutExpiration
     public static class Timeout implements Serializable {
         public final int requestId;
+        public final int coordinatorId;
         public final int itemId;
-        public Timeout(int requestId, int itemId) {
+        public Timeout(int requestId, int coordinatorId, int itemId) {
             this.requestId = requestId;
+            this.coordinatorId = coordinatorId;
+            this.itemId = itemId;
+        }
+    }
+
+    // This class represents a message to release clocks
+    public static class ReleaseClock implements Serializable {
+        public final int coordinatorId;
+        public final int itemId;
+        public ReleaseClock(int itemId, int coordinatorId) {
+            this.coordinatorId = coordinatorId;
             this.itemId = itemId;
         }
     }

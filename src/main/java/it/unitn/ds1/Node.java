@@ -15,6 +15,8 @@ public class Node extends AbstractActor {
   private final int R;
   private final int W;
   private final int T;
+  private final int MAXRANDOMDELAYTIME = 3;
+  private final Random rnd;
   private int counterRequest;
   private final Map<Integer, ActorRef> peers;   // peers[K] points to the node in the group with key K
   private final Map<Integer, Item> items;       // the set of data item the node is currently responsible for
@@ -31,6 +33,7 @@ public class Node extends AbstractActor {
     this.W = w;
     this.T = t;
     this.key = _key;
+    this.rnd = new Random();
     this.peers = new TreeMap<>();
     this.items = new HashMap<>();
     this.requests = new HashMap<>();
@@ -67,6 +70,7 @@ public class Node extends AbstractActor {
       .match(Message.UpdateRequest.class, this::onUpdateRequest)
       .match(Message.UpdateVersion.class, this::onUpdateVersion)
       .match(Message.Write.class, this::onWrite)
+      .match(Message.ReleaseClock.class, this::onReleaseClock)
       .match(Message.ReqDataItemsResponsibleFor.class, this::onReqDataItemsResponsibleFor)
       .match(Message.ResDataItemsResponsibleFor.class, this::onResDataItemsResponsibleFor)
       .match(Message.JoinReadOperationReq.class, this::onJoinReadOperationReq)
@@ -602,7 +606,7 @@ public class Node extends AbstractActor {
       getContext().system().scheduler().scheduleOnce(
               Duration.create(Main.T, TimeUnit.SECONDS),
               this.getSelf(),
-              new Message.Timeout(counterRequest, item.getKey()), // the message to send,
+              new Message.Timeout(counterRequest, this.key, item.getKey()), // the message to send,
               getContext().system().dispatcher(), this.getSelf()
       );
     } else if (nR == this.R){ // this should happen only if R is set to 1
@@ -646,6 +650,13 @@ public class Node extends AbstractActor {
 
   /*----------END GET----------*/
 
+  private void onReleaseClock(Message.ReleaseClock msg){
+    Integer lock = this.locks.get(msg.itemId);
+    if(lock != null && lock == msg.coordinatorId){
+      this.locks.remove(msg.itemId);
+    }
+  }
+
   /*----------TIMEOUT----------*/
 
   private void onTimeout(Message.Timeout msg){
@@ -654,7 +665,18 @@ public class Node extends AbstractActor {
       if(req.getType() == Type.GET) {
         req.getClient().tell(new ClientMessage.GetResult(Result.ERROR, null), ActorRef.noSender());
       } else {
-        this.locks.remove(msg.itemId);
+
+        Set<Integer> nodes = getResponsibleNode(msg.itemId);
+
+        if(nodes.contains(this.key)){
+          this.locks.remove(msg.itemId);
+        }
+
+        for (int node : nodes) {
+          if (node != this.key) {
+            (peers.get(node)).tell(new Message.ReleaseClock(msg.itemId, msg.coordinatorId), this.getSelf());
+          }
+        }
         req.getClient().tell(new ClientMessage.UpdateResult(Result.ERROR, null), ActorRef.noSender());
       }
     }
@@ -703,7 +725,7 @@ public class Node extends AbstractActor {
         getContext().system().scheduler().scheduleOnce(
                 Duration.create(Main.T, TimeUnit.SECONDS),
                 this.getSelf(),
-                new Message.Timeout(counterRequest, item.getKey()), // the message to send,
+                new Message.Timeout(counterRequest, this.key, item.getKey()), // the message to send,
                 getContext().system().dispatcher(), this.getSelf()
         );
       } else if (nW == this.W) { // this should be only if W is 1
@@ -725,7 +747,7 @@ public class Node extends AbstractActor {
     Item item = new Item(msg.item);
     Integer lock = this.locks.get(item.getKey());
     if(lock == null || (lock != null && (lock == -1 || lock == msg.coordinatorId))) {
-      System.out.println("[" + this.getSelf().path().name() + "] [onVersion] Owner lock: item key " + item.getKey() +  " -> lock " + lock + " -> coordinator: " + msg.coordinatorId);
+      System.out.println("[" + this.getSelf().path().name() + "] [onVersion] Owner lock: item key " + item.getKey() +  " -> lock " + lock + " -> coordinator: " + msg.coordinatorId + " (on node): -> " + this.key);
       Item itemNode = this.items.get(item.getKey());
       if (itemNode != null) {
         this.locks.put(item.key, msg.coordinatorId);
@@ -734,7 +756,7 @@ public class Node extends AbstractActor {
 
       this.getSender().tell(new Message.UpdateVersion(msg.requestId, item), this.getSelf());
     } else {
-      System.out.println("[" + this.getSelf().path().name() + "] [onVersion] Owner: It's locked: item " + item.getKey() +  " -> lock " + lock +  " -> coordinator " + msg.coordinatorId);
+      System.out.println("[" + this.getSelf().path().name() + "] [onVersion] Owner: It's locked: item " + item.getKey() +  " -> lock " + lock +  " -> coordinator " + msg.coordinatorId + " (on node) " + this.key);
     }
   }
 
