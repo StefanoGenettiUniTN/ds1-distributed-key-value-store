@@ -1,5 +1,6 @@
 package it.unitn.ds1;
 import akka.actor.ActorRef;
+import akka.actor.Cancellable;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.Collections;
@@ -141,6 +142,14 @@ public class Message{
         public final int requestId;
         public Timeout(int requestId) {
             this.requestId = requestId;
+        }
+    }
+
+    // this timeout message is sent when there is no response for ReqActiveNodeList message request
+    public static class Timeout_ReqActiveNodeList implements Serializable{
+        public final ActorRef destination;
+        public Timeout_ReqActiveNodeList(ActorRef _destination) {
+            this.destination = _destination;
         }
     }
 

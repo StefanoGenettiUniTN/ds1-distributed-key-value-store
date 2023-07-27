@@ -273,6 +273,10 @@ public class Main {
     n7.tell(new Message.PrintItemList(), ActorRef.noSender());
     // ...end print item set of the nodes
 
+    // ... end test crash and recovery
+
+    // test timeout reqActiveNodeList
+
     ///// node n7 crashes
     n7.tell(new Message.CrashMsg(), ActorRef.noSender());
 
@@ -281,15 +285,25 @@ public class Main {
 
     ///// join n8
     ActorRef n8 = system.actorOf(Node.props(64, N, R, W, T),"n8");
-    n8.tell(new Message.JoinMsg(64, n5), ActorRef.noSender());
+    n8.tell(new Message.JoinMsg(64, n7), ActorRef.noSender());
 
+    try { Thread.sleep(10000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    ///// node n7 recover
+    n7.tell(new Message.RecoveryMsg(n5), ActorRef.noSender());
+    
     try { Thread.sleep(2000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     //// n8 print current list of peers
     n8.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
-
-    // ... end test crash and recovery
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n8.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+    // ... end test
 
 
     try {

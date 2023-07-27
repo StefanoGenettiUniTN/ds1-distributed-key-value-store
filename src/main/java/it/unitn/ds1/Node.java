@@ -5,6 +5,7 @@ import java.util.*;
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
 import akka.actor.Props;
+import akka.actor.Cancellable;
 
 import java.util.concurrent.TimeUnit;
 import scala.concurrent.duration.Duration;
@@ -20,9 +21,14 @@ public class Node extends AbstractActor {
   private final Map<Integer, Item> items;       // the set of data item the node is currently responsible for
   private final Map<Integer, Request> requests; // Lists of the requests
 
+  //----FLAGS----
   private int join_update_item_response_counter;  // the joining node performs read operations to ensure that its items are up to date.
                                                   // This attribute is the number of nodes from which it is waiting for the updated
                                                   // version of the items
+  
+  private boolean flag_reqActiveNodeList;
+  private Cancellable timer_reqActiveNodeList;
+  //-------------
 
   public Node(int _key, int n, int r, int w, int t){
     this.N = n;
@@ -36,6 +42,7 @@ public class Node extends AbstractActor {
     counterRequest = 0;
 
     join_update_item_response_counter = 0;
+    flag_reqActiveNodeList = false;
   }
 
   @Override
@@ -75,6 +82,7 @@ public class Node extends AbstractActor {
       .match(Message.AnnounceDeparture.class, this::onAnnounceDeparture)
       .match(Message.CrashMsg.class, this::onCrashMsg)
       .match(Message.Timeout.class, this::onTimeout)
+      .match(Message.Timeout_ReqActiveNodeList.class, this::onTimeout_ReqActiveNodeList)
       .build();
   }
 
@@ -120,8 +128,33 @@ public class Node extends AbstractActor {
     ActorRef msg_bootstrappingPeer = msg.bootstrappingPeer;
 
     // ask to the bootstrapping peer the current list of active nodes
+    this.flag_reqActiveNodeList = false;
     Message.ReqActiveNodeList reqActiveNodeListMsg = new Message.ReqActiveNodeList();
     msg_bootstrappingPeer.tell(reqActiveNodeListMsg, this.getSelf());
+
+    // if the bootstrapping peer does not send a response before the timeout
+    // we retransmit the ReqActiveNodeList until we get a response
+    this.timer_reqActiveNodeList = getContext().system().scheduler().scheduleWithFixedDelay(
+      Duration.create(1, TimeUnit.SECONDS),                    // after 1 second
+      Duration.create(1, TimeUnit.SECONDS),                    // how frequently generate them
+      this.getSelf(),                                                 // destination actor reference
+      new Message.Timeout_ReqActiveNodeList(msg_bootstrappingPeer),   // the message to send,
+      getContext().system().dispatcher(),                             // system dispatcher
+      this.getSelf()                                                  // source of the message (myself)
+    );
+  }
+
+  // the bootstrapping node is not sending a response
+  // --> retransmit
+  private void onTimeout_ReqActiveNodeList(Message.Timeout_ReqActiveNodeList msg){  // TODO: se si vuole, potenzialmente di potrebbe gestire tutte le retransmission con un solo tipo di messaggio che contiene: Destination, Messaggio da inviare, flag da controllare
+    if(this.flag_reqActiveNodeList == false){
+      System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReqActiveNodeList] retransmit ReqActiveNodeList");
+      ActorRef destination = msg.destination;
+      Message.ReqActiveNodeList reqActiveNodeListMsg = new Message.ReqActiveNodeList();
+      destination.tell(reqActiveNodeListMsg, this.getSelf());
+    }else{
+      this.timer_reqActiveNodeList.cancel();
+    }
   }
 
   // Bootrstrapping node is receiving this message from a node which is
@@ -139,6 +172,8 @@ public class Node extends AbstractActor {
   // The node which is joining the network receives the current list
   // of active nodes from the bootstrapping node
   private void onResActiveNodeList(Message.ResActiveNodeList msg){
+    this.flag_reqActiveNodeList = true; // finally the ResActiveNodeList has been received, we can stop retransmitting the request
+
     System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList]");
 
     // retrive message data and initialize the list of peers
@@ -489,7 +524,7 @@ public class Node extends AbstractActor {
     // the node add itself to the list of nodes currently active
     // indeed the present node has removed all the elements of this.peers
     // in onRecoveryMsg
-    this.peers.put(this.key, this.getSelf());
+    this.peers.put(this.key, this.getSelf()); //TODO: forse nel msg.activeNodes c'è già il this.key
 
     // ii. the node which is recovering should discard those items that are no longer under its responsability
     for(Integer ik : this.items.keySet()){
@@ -675,7 +710,7 @@ public class Node extends AbstractActor {
 
     //Timeout
     getContext().system().scheduler().scheduleOnce(
-            Duration.create(Main.T, TimeUnit.SECONDS),
+            Duration.create(this.T, TimeUnit.SECONDS),
             this.getSelf(),
             new Message.Timeout(counterRequest), // the message to send,
             getContext().system().dispatcher(), this.getSelf()
@@ -744,7 +779,7 @@ public class Node extends AbstractActor {
 
     //Timeout
     getContext().system().scheduler().scheduleOnce(
-          Duration.create(Main.T, TimeUnit.SECONDS),
+          Duration.create(this.T, TimeUnit.SECONDS),
           this.getSelf(),
           new Message.Timeout(counterRequest), // the message to send,
           getContext().system().dispatcher(), this.getSelf()
