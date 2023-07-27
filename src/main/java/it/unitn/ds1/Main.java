@@ -332,7 +332,35 @@ public class Main {
     try { Thread.sleep(1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
     n8.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
     // ... end test timeout reqDataItemsResponsibleFor
+
+    // test timeout AnnounceDeparture
+    ///// node n6 crashes
+    n6.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(2000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n7 leave
+    n7.tell(new Message.LeaveMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(10000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    ///// node n6 recover
+    n6.tell(new Message.RecoveryMsg(n5), ActorRef.noSender());
+
+    //// n7 print current list of peers
+    n7.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n7.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    // ... end test timeout AnnounceDeparture
 
     try {
       System.out.println(">>> Press ENTER to exit <<<");

@@ -5,7 +5,6 @@ import java.util.*;
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
 import akka.actor.Props;
-import akka.actor.Cancellable;
 
 import java.util.concurrent.TimeUnit;
 import scala.concurrent.duration.Duration;
@@ -26,6 +25,12 @@ public class Node extends AbstractActor {
                                                   // This attribute is the number of nodes from which it is waiting for the updated
                                                   // version of the items
   
+  private int leave_response_counter; // the leaving node passes its data items to the nodes that become responsible for them
+                                      // after its departure. We wait until each of these nodes send an ACK back. Indeed it is
+                                      // possible that some of them are currently in crash state. Consequently, if we send the
+                                      // items blindly, we could lose data items or violate replication requirements
+
+  private HashMap<Integer, HashSet<Integer>> nodeKeyToResponsibleItem; // data structure used in the context of the leave opreation
   private boolean flag_reqActiveNodeList;
   private boolean flag_reqDataItemsResponsibleFor;
 
@@ -43,6 +48,7 @@ public class Node extends AbstractActor {
     this.counterRequest = 0;
 
     this.join_update_item_response_counter = 0;
+    this.leave_response_counter = 0;
     this.flag_reqActiveNodeList = false;
     this.flag_reqDataItemsResponsibleFor = false;
   }
@@ -81,11 +87,14 @@ public class Node extends AbstractActor {
       .match(Message.JoinReadOperationRes.class, this::onJoinReadOperationRes)
       .match(Message.AnnouncePresence.class, this::onAnnouncePresence)
       .match(Message.LeaveMsg.class, this::onLeaveMsg)
+      .match(Message.PreLeaveStatusCheck.class, this::onPreLeaveStatusCheck)
       .match(Message.AnnounceDeparture.class, this::onAnnounceDeparture)
+      .match(Message.DepartureAck.class, this::onDepartureAck)
       .match(Message.CrashMsg.class, this::onCrashMsg)
       .match(Message.Timeout.class, this::onTimeout)
       .match(Message.Timeout_ReqActiveNodeList.class, this::onTimeout_ReqActiveNodeList)
       .match(Message.Timeout_ReqDataItemsResponsibleFor.class, this::onTimeout_ReqDataItemsResponsibleFor)
+      .match(Message.Timeout_AnnounceDeparture.class, this::onTimeout_AnnounceDeparture)
       .build();
   }
 
@@ -317,7 +326,6 @@ public class Node extends AbstractActor {
         }
       });
     }
-
   }
 
   // Receive this message from a node that in the context of the join operation, it is performing reads to ensure that
@@ -417,16 +425,16 @@ public class Node extends AbstractActor {
   private void onLeaveMsg(Message.LeaveMsg msg){
     System.out.println("["+this.getSelf().path().name()+"] [onLeaveMsg]"); 
     
-    HashMap<Integer, HashSet<Integer>> responsibleNode = new HashMap<>(); // responsibleNode[k] :: list of item keys the node k is
-                                                                          // responsible for after the departure of the present node
-    this.peers.keySet().forEach((peerKey) -> {responsibleNode.put(peerKey, new HashSet<>());});  
+    this.nodeKeyToResponsibleItem = new HashMap<>();  // nodeKeyToResponsibleItem[k] :: list of item keys the node k is
+                                                      // responsible for after the departure of the present node
+    this.peers.keySet().forEach((peerKey) -> {this.nodeKeyToResponsibleItem.put(peerKey, new HashSet<>());});  
 
-    // fill the list of responsible node (responsibleNode) for each item in this.items
+    // fill the list of responsible node (nodeKeyToResponsibleItem) for each item in this.items
     for(Integer itemKey : this.items.keySet()){
       Set<Integer> responsibleNodeKeys = this.getResponsibleNode(itemKey);
       responsibleNodeKeys.forEach((respNodeKey) -> {
         if(respNodeKey != this.key){
-          HashSet<Integer> respNodeSet = responsibleNode.get(respNodeKey);
+          HashSet<Integer> respNodeSet = this.nodeKeyToResponsibleItem.get(respNodeKey);
           respNodeSet.add(itemKey);
         }
       });
@@ -441,34 +449,114 @@ public class Node extends AbstractActor {
     for(Integer itemKey : this.items.keySet()){
       Set<Integer> responsibleNodeKeys = this.getResponsibleNode(itemKey);
       responsibleNodeKeys.forEach((respNodeKey) -> {
-        if(responsibleNode.get(respNodeKey).contains(itemKey)){ // in this case the node was already resoponsible for the item even before the departure of the present node
-          responsibleNode.get(respNodeKey).remove(itemKey);
+        if(this.nodeKeyToResponsibleItem.get(respNodeKey).contains(itemKey)){ // in this case the node was already resoponsible for the item even before the departure of the present node
+          this.nodeKeyToResponsibleItem.get(respNodeKey).remove(itemKey);
         }else{
-          responsibleNode.get(respNodeKey).add(itemKey);
+          this.nodeKeyToResponsibleItem.get(respNodeKey).add(itemKey);
         }
       });
     }
 
-    // the node announces to every other node that it is leaving
-    // the node passes its data items to the nodes that become responsible for them after its departure
-    this.peers.forEach((k, p) -> {
+    // before completing the execution of the leave, we need to be sure that the peers
+    // which are going to become responsible of some data items after the departure of the
+    // present node, are not crashed. To avoid this we send an PreLeaveStatusCheck message.
+    this.leave_response_counter = 0;
+    for (Integer peerKey : this.peers.keySet()) {
+      if(!this.nodeKeyToResponsibleItem.get(peerKey).isEmpty()){
+        // set leave response counter, i.e. the number of ACK that we have to wait before completing the leave operation
+        this.leave_response_counter++;
 
-      // prepare announce departure message
-      Set<Item> announceDepartureSet = new HashSet<>();
-      responsibleNode.get(k).forEach((ik) -> {
-        announceDepartureSet.add( new Item( ik, 
-                                            this.items.get(ik).getValue(),
-                                            this.items.get(ik).getVersion()));
-        });
+        // send PreLeaveStatusCheck message
+        this.peers.get(peerKey).tell(new Message.PreLeaveStatusCheck(), this.getSelf());
+      }
+    }
 
-      p.tell(new Message.AnnounceDeparture(this.key, Collections.unmodifiableSet(announceDepartureSet)), this.getSelf());
-    });
+    if(this.leave_response_counter == 0){ // all the expected peers have sent the acknowledgment --> complete leave operation
 
-    // remove all the peers since the node is no more part of the ring
-    this.peers.clear();
+      // the node announces to every other node that it is leaving
+      // the node passes its data items to the nodes that become responsible for them after its departure
+      this.peers.forEach((k, p) -> {
 
-    // remove all the data items, since the present node is no more responsible for them
-    this.items.clear();
+        // prepare announce departure message
+        Set<Item> announceDepartureSet = new HashSet<>();
+        this.nodeKeyToResponsibleItem.get(k).forEach((ik) -> {
+          announceDepartureSet.add( new Item( ik, 
+                                              this.items.get(ik).getValue(),
+                                              this.items.get(ik).getVersion()));
+          });
+
+        p.tell(new Message.AnnounceDeparture(this.key, Collections.unmodifiableSet(announceDepartureSet)), this.getSelf());
+      });
+
+      // remove all the peers since the node is no more part of the ring
+      this.peers.clear();
+
+      // remove all the data items, since the present node is no more responsible for them
+      this.items.clear();
+
+    }else{  // set timeout
+      // if the peers which should become responsible of some of the data items of the present node
+      // does not send an ack withing the timeout interval,  we abort the leave operation
+      getContext().system().scheduler().scheduleOnce(
+        Duration.create(this.T, TimeUnit.SECONDS),  // after 1 second
+        this.getSelf(),                             // destination actor reference
+        new Message.Timeout_AnnounceDeparture(),    // the message to send,
+        getContext().system().dispatcher(),         // system dispatcher
+        this.getSelf()                              // source of the message (myself)
+      );
+    }
+  }
+
+  // the leaving node has sent this message to the present node in order to be sure that the present node is
+  // currently available (not crashed)
+  private void onPreLeaveStatusCheck(Message.PreLeaveStatusCheck msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onPreLeaveStatusCheck]");
+    this.getSender().tell(new Message.DepartureAck(), this.getSelf());
+  }
+
+  // the leaving node is receing this ack from one of its peers which is going to become responsible of some
+  // of the items currently stored by the leaving node after the departure of this last
+  private void onDepartureAck(Message.DepartureAck msg){
+    System.out.println("["+this.getSelf().path().name()+"] [onDepartureAck]");
+    this.leave_response_counter--;
+
+    if(this.leave_response_counter == 0){ // all the expected peers have sent the acknowledgment --> complete leave operation
+
+      // the node announces to every other node that it is leaving
+      // the node passes its data items to the nodes that become responsible for them after its departure
+      this.peers.forEach((k, p) -> {
+
+        // prepare announce departure message
+        Set<Item> announceDepartureSet = new HashSet<>();
+        this.nodeKeyToResponsibleItem.get(k).forEach((ik) -> {
+          announceDepartureSet.add( new Item( ik, 
+                                              this.items.get(ik).getValue(),
+                                              this.items.get(ik).getVersion()));
+          });
+
+        p.tell(new Message.AnnounceDeparture(this.key, Collections.unmodifiableSet(announceDepartureSet)), this.getSelf());
+      });
+
+      // remove all the peers since the node is no more part of the ring
+      this.peers.clear();
+
+      // remove all the data items, since the present node is no more responsible for them
+      this.items.clear();
+
+      // clear responsible node
+      this.nodeKeyToResponsibleItem.clear();
+    }
+
+  }
+
+  // this timeout message is sent when the leaving node does not receive an acknowledgement from one or more
+  // of the nodes that should become responsible of its data items after the departure.
+  // As a consequence we need to abort the leave operation and rollback the state.
+  private void onTimeout_AnnounceDeparture(Message.Timeout_AnnounceDeparture msg){
+    if(this.leave_response_counter > 0){  // there are still nodes which have not sent the ACK yet
+      System.out.println("["+this.getSelf().path().name()+"] [onTimeout_AnnounceDeparture] ABORT LEAVE because not all the ACK have been receiver from the target nodes.");
+      this.peers.put(this.key, this.getSelf());
+    }
   }
 
   // receive this message from a node which is leaving the network

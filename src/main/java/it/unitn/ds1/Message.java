@@ -95,6 +95,11 @@ public class Message{
     // The main requests a node to leave
     public static class LeaveMsg implements Serializable{}
     
+    // the node which is leaving the ring has to be sure that all its peers which
+    // are going to become reponsible of a subset of its data items after the departure,
+    // are not in crash state
+    public static class PreLeaveStatusCheck implements Serializable{}
+
     // The node which is leaving announce its departure with this message
     public static class AnnounceDeparture implements Serializable{
         public final int key;
@@ -105,6 +110,10 @@ public class Message{
             this.itemSet = Collections.unmodifiableSet(new HashSet<>(_itemSet));
         }
     }
+
+    // this message is sent by a node which is informed by a leaving peer about new items
+    // which are going to be under its responsability after the departure
+    public static class DepartureAck implements Serializable{}
 
     // Recovery message
     public static class RecoveryMsg implements Serializable{
@@ -151,6 +160,9 @@ public class Message{
     // this timeout message is sent when there is no response for ReqDataItemsResponsibleFor message request
     public static class Timeout_ReqDataItemsResponsibleFor implements Serializable{}
     
+    // this timeout message is sent when the leaving node does not receive an acknowledgement from one or more
+    // of the nodes that should become responsible of its data items after the departure
+    public static class Timeout_AnnounceDeparture implements Serializable{}
 
     // This class represents a message to get an item
     public static class GetRequest implements Serializable {
