@@ -237,6 +237,312 @@ public class Main {
 
     // ... end leaving
 
+    // test crash and recovery
+
+    try { Thread.sleep(2000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// create node n6
+    ActorRef n6 = system.actorOf(Node.props(40, N, R, W, T),"n6");
+
+    //// send to n6 the message to allow it joininig the network
+    n6.tell(new Message.JoinMsg(40, n5), ActorRef.noSender());
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    n6.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+    
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n5.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n6.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    //// create node n7
+    ActorRef n7 = system.actorOf(Node.props(65, N, R, W, T),"n7");
+
+    //// send to n7 the message to allow it joininig the network
+    n7.tell(new Message.JoinMsg(65, n5), ActorRef.noSender());
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n5.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n7.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    ///// node n6 crashes
+    n6.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n5.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    // write new items
+    c1.tell(new ClientMessage.Update(new Item(39, "VALUE39"), n5), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(48, "VALUE48"), n5), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(64, "VALUE48"), n5), ActorRef.noSender());
+
+    //// node n6 recovery
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n6.tell(new Message.RecoveryMsg(n5), Actor.noSender());
+
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n5.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n6.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n7.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    // ... end test crash and recovery
+
+    // test timeout reqActiveNodeList
+
+    ///// node n7 crashes
+    n7.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    ///// join n8
+    ActorRef n8 = system.actorOf(Node.props(64, N, R, W, T),"n8");
+    n8.tell(new Message.JoinMsg(64, n7), ActorRef.noSender());
+
+    try { Thread.sleep(10000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    ///// node n7 recover
+    n7.tell(new Message.RecoveryMsg(n5), ActorRef.noSender());
+    
+    try { Thread.sleep(2000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// n8 print current list of peers
+    n8.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n8.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    // ... end test timeout reqActiveNodeList
+
+    // test timeout reqDataItemsResponsibleFor
+    
+    ///// node n7 crashes
+    n7.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    ///// join n8
+    n8.tell(new Message.JoinMsg(63, n5), ActorRef.noSender());
+
+    try { Thread.sleep(10000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    ///// node n7 recover
+    n7.tell(new Message.RecoveryMsg(n5), ActorRef.noSender());
+    
+    try { Thread.sleep(2000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// n8 print current list of peers
+    n8.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n8.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    // ... end test timeout reqDataItemsResponsibleFor
+
+    // test timeout AnnounceDeparture
+    ///// node n6 crashes
+    n6.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(2000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n7 leave
+    n7.tell(new Message.LeaveMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(10000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    ///// node n6 recover
+    n6.tell(new Message.RecoveryMsg(n5), ActorRef.noSender());
+
+    //// n7 print current list of peers
+    n7.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n7.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    // ... end test timeout AnnounceDeparture
+
+    // test timeout JoinReadOperationReq
+    System.out.println("");
+    System.out.println("################################### test timeout JoinReadOperationReq");
+    System.out.println("");
+
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// n5 print current list of peers
+    n5.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n5.tell(new Message.PrintItemList(), ActorRef.noSender());
+
+    try { Thread.sleep(2000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n5 crash
+    n5.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    ///// join n8
+    n8.tell(new Message.JoinMsg(63, n6), ActorRef.noSender());
+
+    try { Thread.sleep(10000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n5 recover
+    n5.tell(new Message.RecoveryMsg(n6), ActorRef.noSender());
+
+    //// n8 print current list of peers
+    n8.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n8.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    // ... end test timeout JoinReadOperationReq
+
+    // test timeout ReqActiveNodeList_recover
+    System.out.println("");
+    System.out.println("################################### test timeout ReqActiveNodeList_recover");
+    System.out.println("");
+
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n5 crash
+    n5.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n6 crash
+    n6.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(2000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n6 recover
+    n6.tell(new Message.RecoveryMsg(n5), ActorRef.noSender());
+
+    try { Thread.sleep(10000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n5 recover
+    n5.tell(new Message.RecoveryMsg(n7), ActorRef.noSender());
+
+    try { Thread.sleep(2000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n6 recover
+    n6.tell(new Message.RecoveryMsg(n5), ActorRef.noSender());
+
+    try { Thread.sleep(2000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// n6 print current list of peers
+    n6.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+    // print item set of the nodes
+    try { Thread.sleep(1000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    n5.tell(new Message.PrintItemList(), ActorRef.noSender());
+    // ...end print item set of the nodes
+
+    // ... end test timeout ReqActiveNodeList_recover
+
+    // test timeout ReqDataItemsResponsibleFor_recovery
+    System.out.println("");
+    System.out.println("################################### test timeout ReqDataItemsResponsibleFor_recovery");
+    System.out.println("");
+
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n5 crash
+    n5.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n7 crash
+    n7.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n5 recover
+    n5.tell(new Message.RecoveryMsg(n6), ActorRef.noSender());
+
+    try { Thread.sleep(10000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n7 recover
+    n7.tell(new Message.RecoveryMsg(n6), ActorRef.noSender());
+    
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n5 recover
+    n5.tell(new Message.RecoveryMsg(n6), ActorRef.noSender());
+
+    // ... end test timeout ReqDataItemsResponsibleFor_recovery
+
     try {
       System.out.println(">>> Press ENTER to exit <<<");
       System.in.read();
