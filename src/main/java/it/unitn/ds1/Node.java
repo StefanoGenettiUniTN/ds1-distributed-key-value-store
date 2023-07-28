@@ -165,7 +165,7 @@ public class Node extends AbstractActor {
 
   // the bootstrapping node is not sending a response
   // --> abort join operation
-  private void onTimeout_ReqActiveNodeList(Message.Timeout_ReqActiveNodeList msg){  // TODO: se si vuole, potenzialmente di potrebbe gestire tutti i timeout con una sola funzione?
+  private void onTimeout_ReqActiveNodeList(Message.Timeout_ReqActiveNodeList msg){
     if(this.flag_reqActiveNodeList == false){
       System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReqActiveNodeList] ABORT JOIN because no ResActiveNodeList has been received before timeout expiration.");
       // in this case, nothing has been done, we can simply do nothing
@@ -250,21 +250,21 @@ public class Node extends AbstractActor {
     this.getSender().tell(msg_response, this.getSelf());
   }
 
-  // the joining node receives the set of data imtems it is responsible for from its clockwise neighbor
+  // the joining node receives the set of data items it is responsible for from its clockwise neighbor
   private void onResDataItemsResponsibleFor(Message.ResDataItemsResponsibleFor msg){
     this.flag_reqDataItemsResponsibleFor = true; // finally the ResDataItemsResponsibleFor has been received, we can go on with the join operation
     System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor]");
 
     // retrive message data and add the data items the joining node is responsible for
     for(Item item : msg.resSet) {
-      this.items.put(item.key, item); //TODO: fare copia valore e non riferimento
+      this.items.put(item.key, new Item(item.getKey(), item.getValue(), item.getVersion()));
     }
     System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor] Now I am responsible for the following data items:"+this.items.values());
 
     join_update_item_response_counter = 0;
     if(!this.items.isEmpty()){
 
-      //--- perform read operations to ensure that the received items are up to date. // TODO: riflettere sui timeout
+      //--- perform read operations to ensure that the received items are up to date.
       //--- remark: no read request is sent to the clockwise neighbor which has just sent the current set of items
       Set<ActorRef> readDestinationNodes = new HashSet<>();
       int n = this.N;
@@ -780,11 +780,6 @@ public class Node extends AbstractActor {
 
   /*----------END RECOVERY----------*/
 
-  // TODO: onGet(key)
-  // TODO: onUpdate(key, value)
-
-
-
   /*----------GET RESPONSIBLE NODES FOR AN ITEM----------*/
 
   // given a key, get the set of actors which are responsible
@@ -852,7 +847,7 @@ public class Node extends AbstractActor {
 
   // get clockwise neighbor
   // this function is called in the context of a join
-  // request, so the present node is not part of the network yet (TODO: magari facciamo in modo che invece questo metodo sia generico)
+  // request, so the present node is not part of the network yet (TODO: magari facciamo in modo che invece questo metodo sia generico. TODO: riflettere su cosa succede quando viene chiamato questo metodo in recovery, mi sono accordo che in quel caso this.key è parte del ring.)
   private ActorRef getClockwiseNeighbor(){
 
     for(Map.Entry<Integer, ActorRef> entry : this.peers.entrySet()) {
