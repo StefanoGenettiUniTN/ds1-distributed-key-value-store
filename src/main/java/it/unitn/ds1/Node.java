@@ -24,9 +24,11 @@ public class Node extends AbstractActor {
   private final Map<Integer, Integer> locks; //Lock mapping used to manage concurrent write
 
   //----FLAGS----
-  private int join_update_item_response_counter;  // the joining node performs read operations to ensure that its items are up to date.
-                                                  // This attribute is the number of nodes from which it is waiting for the updated
-                                                  // version of the items
+  private final Map<Integer, Integer> join_update_item_response_counter;  // the joining node performs read operations to ensure that its items are up to date.
+                                                                          // join_update_item_response_counter[item_key] :: the number of version update received about item with key item_key
+  
+  private boolean flag_ignore_further_read_update;  // flag_ignore_further_read_update == true --> the joining node receive the updated data items from a sufficient number of peers.
+                                                    // Hence we can ignore further read update                                                                        
   
   private int leave_response_counter; // the leaving node passes its data items to the nodes that become responsible for them
                                       // after its departure. We wait until each of these nodes send an ACK back. Indeed it is
@@ -38,6 +40,8 @@ public class Node extends AbstractActor {
   private boolean flag_reqActiveNodeList_recovery;
   private boolean flag_reqDataItemsResponsibleFor;
   private boolean flag_reqDataItemsResponsibleFor_recovery;
+
+  // TODO: noto che alcuni attributi non sono final
 
   //-------------
 
@@ -54,7 +58,8 @@ public class Node extends AbstractActor {
     this.locks = new HashMap<>();
     this.counterRequest = 0;
 
-    this.join_update_item_response_counter = 0;
+    this.join_update_item_response_counter = new HashMap<>();
+    this.flag_ignore_further_read_update = false;
     this.leave_response_counter = 0;
     this.flag_reqActiveNodeList = false;
     this.flag_reqActiveNodeList_recovery = false;
@@ -287,27 +292,20 @@ public class Node extends AbstractActor {
     }
     System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor] Now I am responsible for the following data items:"+this.items.values());
 
-    join_update_item_response_counter = 0;
+    this.join_update_item_response_counter.clear();
+    this.flag_ignore_further_read_update = false;
     if(!this.items.isEmpty()){
 
       //--- perform read operations to ensure that the received items are up to date.
       //--- remark: no read request is sent to the clockwise neighbor which has just sent the current set of items
-      //--- for each item we compute the responsible nodes but for each item we send the read update request only towards at most R-1 nodes due to quorum constraints (remark: clockwise neighbour has already sent the message)
+      //--- for each item we compute the responsible nodes which are the destinations of the update request
       Set<ActorRef> readDestinationNodes = new HashSet<>();
-      int r = this.R;
 
       for(Integer ik : this.items.keySet()){
-        Iterator<Integer> it = (new TreeSet<Integer>(this.getResponsibleNode(ik))).iterator();  // sort the elements to minimize the number of messages
-        for(int threshold=0; threshold<r-1; threshold++){ // we send the read update request only towards at most R-1 nodes due to quorum constraints (remark: clockwise neighbour has already sent the message)
-          if(it.hasNext()){
-            Integer it_next_key = it.next();
-            if(this.peers.get(it_next_key).equals(this.getSender())){ // we have to ignore the clockwise neighbour which has already sent a response
-              if(!it.hasNext()){break;};
-              it_next_key = it.next();
-            }
-            readDestinationNodes.add(this.peers.get(it_next_key));    
-          }else{
-            break;
+        for(Integer ik_resp_key : this.getResponsibleNode(ik)){
+          if(!this.peers.get(ik_resp_key).equals(this.getSender())){ // we have to ignore the clockwise neighbour which has already sent a response
+            this.join_update_item_response_counter.put(ik, 0);
+            readDestinationNodes.add(this.peers.get(ik_resp_key));
           }
         }
       }
@@ -323,16 +321,15 @@ public class Node extends AbstractActor {
         try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
         catch (InterruptedException e) { e.printStackTrace(); }
         dest.tell(msg_JoinReadOperationReq, this.getSelf());
-        this.join_update_item_response_counter++;
       }
       //---
     }
 
     System.out.println("join_update_item_response_counter = "+join_update_item_response_counter);
 
-    // in the case this.join_update_item_response_counter==0 then it is not necessary to perform any read operation
+    // in the case this.join_update_item_response_counter is empty then it is not necessary to perform any read operation
     // and the node can immediately announce its presence to every node in the system
-    if(this.join_update_item_response_counter == 0){
+    if(this.join_update_item_response_counter.isEmpty()){
       
       // the node add itself to the list of nodes currently active
       this.peers.put(this.key, this.getSelf());
@@ -361,13 +358,18 @@ public class Node extends AbstractActor {
     }
   }
 
-  // at least one of the peers which should have sent a JoinReadOperationRes message, does not reply
-  // within the timeout interval, we abort the join operation and rollback the state
+  // not enough peers which should have sent a JoinReadOperationRes message, replied
+  // within the timeout interval, we abort the join operation and rollback the state.
+  // More in depth, for each item requested, at least N-1 peers should have sent a 
+  // response.
   private void onTimeout_JoinReadOperationReq(Message.Timeout_JoinReadOperationReq msg){
-    if(this.join_update_item_response_counter > 0){  // there are still nodes which have not sent the JoinReadOperationRes messge
-      System.out.println("["+this.getSelf().path().name()+"] [onTimeout_JoinReadOperationReq] ABORT JOIN because not all the expected nodes have sent a JoinReadOperationRes message");
-      this.peers.clear();
-      this.items.clear();
+    for(Map.Entry<Integer, Integer> entry : this.join_update_item_response_counter.entrySet()){
+      if(entry.getValue() < this.R - 1){
+        System.out.println("["+this.getSelf().path().name()+"] [onTimeout_JoinReadOperationReq] ABORT JOIN because not all the expected nodes have sent a JoinReadOperationRes message");
+        this.flag_ignore_further_read_update = true;
+        this.peers.clear();
+        this.items.clear();
+      }
     }
   }
 
@@ -380,7 +382,7 @@ public class Node extends AbstractActor {
     // have a higher version in this node
     Set<Item> updatedItems = new HashSet<>();
     for(Item item : msg.requestItemSet) {
-      if(this.items.containsKey(item.getKey()) && this.items.get(item.getKey()).getVersion() > item.getVersion()){  // the current node has a more updated version of the item
+      if(this.items.containsKey(item.getKey())){  // the current node has the item
         Item updatedItem = new Item(  item.key,
                                       this.items.get(item.getKey()).getValue(),
                                       this.items.get(item.getKey()).getVersion());
@@ -395,7 +397,6 @@ public class Node extends AbstractActor {
     // model a random network/processing delay
     try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
     catch (InterruptedException e) { e.printStackTrace(); }
-
     this.getSender().tell(joinReadOperationResponse, this.getSelf());
   }
 
@@ -404,14 +405,21 @@ public class Node extends AbstractActor {
   // nodes, the node can finally announce its presence to every node in the system and start
   // serving requests coming from clients.
   private void onJoinReadOperationRes(Message.JoinReadOperationRes msg){
-    System.out.println("["+this.getSelf().path().name()+"] [onJoinReadOperationRes]");
     
-    // decrease the counter of nodes from which I am waiting for
-    // the updated version of the items
-    this.join_update_item_response_counter--;
+    // the timeout is expired
+    if(this.flag_ignore_further_read_update){
+      return;
+    }
+
+    System.out.println("["+this.getSelf().path().name()+"] [onJoinReadOperationRes]");
 
     // retrive message data and update the items in this.items accordingly
     for(Item item : msg.responseItemSet){
+
+      // increase the counter of reply about this item that the present node
+      // has received
+      this.join_update_item_response_counter.put(item.getKey(), this.join_update_item_response_counter.get(item.getKey())+1);
+
       if(this.items.get(item.getKey()).getVersion() < item.getVersion()){
         Item updatedItem = new Item(  item.key,
                                       item.getValue(),
@@ -420,26 +428,33 @@ public class Node extends AbstractActor {
       }
     }
 
-    // all the requested nodes have sent the updated version of the items.
+    // if this for iteration completes without executing the return
+    // then all the requested nodes have sent the updated version of the items.
     // Finally, the present joining node can announce its presence to every
     // node in the system and start serving requests coming from clients.
-    if(this.join_update_item_response_counter == 0){
-      // the node add itself to the list of nodes currently active
-      this.peers.put(this.key, this.getSelf());
-
-      // the node can finally announce its presence to every node in the system
-      Set<Integer> announcePresenceKeyItemSet = new HashSet<>(this.items.keySet());
-      Message.AnnouncePresence announcePresence = new Message.AnnouncePresence(this.key, Collections.unmodifiableSet(announcePresenceKeyItemSet));
-      this.peers.forEach((k, p) -> {
-        if(!p.equals(this.getSelf())){
-          // model a random network/processing delay
-          try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
-          catch (InterruptedException e) { e.printStackTrace(); }
-          p.tell(announcePresence, this.getSelf());
-        }
-      });
+    for(Map.Entry<Integer, Integer> entry : this.join_update_item_response_counter.entrySet()){
+      if(entry.getValue() < this.R - 1){
+        return;
+      }
     }
 
+    // ignore further JoinReadOperationRes
+    this.flag_ignore_further_read_update = true;
+
+    // the node add itself to the list of nodes currently active
+    this.peers.put(this.key, this.getSelf());
+
+    // the node can finally announce its presence to every node in the system
+    Set<Integer> announcePresenceKeyItemSet = new HashSet<>(this.items.keySet());
+    Message.AnnouncePresence announcePresence = new Message.AnnouncePresence(this.key, Collections.unmodifiableSet(announcePresenceKeyItemSet));
+    this.peers.forEach((k, p) -> {
+      if(!p.equals(this.getSelf())){
+        // model a random network/processing delay
+        try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+        catch (InterruptedException e) { e.printStackTrace(); }
+        p.tell(announcePresence, this.getSelf());
+      }
+    });
   }
 
   // Sender of this message is a node which is joining the system.
