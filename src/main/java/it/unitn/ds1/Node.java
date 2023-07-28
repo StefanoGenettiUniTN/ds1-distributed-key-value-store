@@ -34,12 +34,17 @@ public class Node extends AbstractActor {
                                       // after its departure. We wait until each of these nodes send an ACK back. Indeed it is
                                       // possible that some of them are currently in crash state. Consequently, if we send the
                                       // items blindly, we could lose data items or violate replication requirements
+  private boolean timeout_AnnounceDeparture;
 
   private HashMap<Integer, HashSet<Integer>> nodeKeyToResponsibleItem; // data structure used in the context of the leave opreation
   private boolean flag_reqActiveNodeList;
+  private boolean timeout_ReqActiveNodeList_expired;
   private boolean flag_reqActiveNodeList_recovery;
+  private boolean timeout_ReqActiveNodeList_recover_expired;
   private boolean flag_reqDataItemsResponsibleFor;
+  private boolean timeout_ReqDataItemsResponsibleFor_expired;
   private boolean flag_reqDataItemsResponsibleFor_recovery;
+  private boolean timeout_ReqDataItemsResponsibleFor_recovery_expired;
 
   // TODO: noto che alcuni attributi non sono final
 
@@ -61,9 +66,15 @@ public class Node extends AbstractActor {
     this.join_update_item_response_counter = new HashMap<>();
     this.flag_ignore_further_read_update = false;
     this.leave_response_counter = 0;
+    this.timeout_AnnounceDeparture = false;
     this.flag_reqActiveNodeList = false;
+    this.timeout_ReqActiveNodeList_expired = false;
     this.flag_reqActiveNodeList_recovery = false;
+    this.timeout_ReqActiveNodeList_recover_expired = false;
     this.flag_reqDataItemsResponsibleFor = false;
+    this.timeout_ReqDataItemsResponsibleFor_expired = false;
+    this.flag_reqDataItemsResponsibleFor_recovery = false;
+    this.timeout_ReqDataItemsResponsibleFor_recovery_expired = false;
   }
 
   @Override
@@ -155,7 +166,7 @@ public class Node extends AbstractActor {
     System.out.println("["+this.getSelf().path().name()+"] [onJoinMsg]");
 
     // retrive message data
-    int msg_key = msg.key;
+    int msg_key = msg.key;  // TODO: risolvere queste key usandola invece di metterla nel costruttore
     ActorRef msg_bootstrappingPeer = msg.bootstrappingPeer;
 
     // ask to the bootstrapping peer the current list of active nodes
@@ -170,6 +181,7 @@ public class Node extends AbstractActor {
 
     // if the bootstrapping peer does not send a response before the timeout
     // we abort the join process
+    this.timeout_ReqActiveNodeList_expired = false;
     getContext().system().scheduler().scheduleOnce(
       Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
       this.getSelf(),                             // destination actor reference
@@ -183,6 +195,7 @@ public class Node extends AbstractActor {
   // --> abort join operation
   private void onTimeout_ReqActiveNodeList(Message.Timeout_ReqActiveNodeList msg){
     if(this.flag_reqActiveNodeList == false){
+      this.timeout_ReqActiveNodeList_expired = true;
       System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReqActiveNodeList] ABORT JOIN because no ResActiveNodeList has been received before timeout expiration.");
       // in this case, nothing has been done, we can simply do nothing
     }
@@ -208,6 +221,12 @@ public class Node extends AbstractActor {
   // The node which is joining the network receives the current list
   // of active nodes from the bootstrapping node
   private void onResActiveNodeList(Message.ResActiveNodeList msg){
+
+    // ignore the message if the corresponding timeout has already expired
+    if(this.timeout_ReqActiveNodeList_expired){
+      return;
+    }
+
     this.flag_reqActiveNodeList = true; // finally the ResActiveNodeList has been received, we can go on with the join operation without aborting
     System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList]");
 
@@ -233,6 +252,7 @@ public class Node extends AbstractActor {
 
     // if the clocwise neighbour peer does not send a response before the timeout
     // we abort the join operation
+    this.timeout_ReqDataItemsResponsibleFor_expired = false;
     getContext().system().scheduler().scheduleOnce(
       Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
       this.getSelf(),                             // destination actor reference
@@ -246,6 +266,7 @@ public class Node extends AbstractActor {
   // --> abort join operation
   private void onTimeout_ReqDataItemsResponsibleFor(Message.Timeout_ReqDataItemsResponsibleFor msg){
     if(this.flag_reqDataItemsResponsibleFor == false){
+      this.timeout_ReqDataItemsResponsibleFor_expired = true;
       System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReqDataItemsResponsibleFor] ABORT JOIN because no ResDataItemsResponsibleFor has been received before timeout expiration.");
       this.peers.clear(); // TODO: facendo così, nel report si può parlare di optimistic writeahead log? O una roba del genere?
     }
@@ -283,6 +304,12 @@ public class Node extends AbstractActor {
 
   // the joining node receives the set of data items it is responsible for from its clockwise neighbor
   private void onResDataItemsResponsibleFor(Message.ResDataItemsResponsibleFor msg){
+
+    // ignore the message if the corresponding timeout has already expired
+    if(this.timeout_ReqDataItemsResponsibleFor_expired){
+      return;
+    }
+
     this.flag_reqDataItemsResponsibleFor = true; // finally the ResDataItemsResponsibleFor has been received, we can go on with the join operation
     System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor]");
 
@@ -566,6 +593,7 @@ public class Node extends AbstractActor {
     }else{  // set timeout
       // if the peers which should become responsible of some of the data items of the present node
       // does not send an ack withing the timeout interval,  we abort the leave operation
+      this.timeout_AnnounceDeparture = false;
       getContext().system().scheduler().scheduleOnce(
         Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
         this.getSelf(),                             // destination actor reference
@@ -586,6 +614,12 @@ public class Node extends AbstractActor {
   // the leaving node is receing this ack from one of its peers which is going to become responsible of some
   // of the items currently stored by the leaving node after the departure of this last
   private void onDepartureAck(Message.DepartureAck msg){
+
+    // ignore the message if the corresponding timeout has already expired
+    if(this.timeout_AnnounceDeparture){
+      return;
+    }
+
     System.out.println("["+this.getSelf().path().name()+"] [onDepartureAck]");
     this.leave_response_counter--;
 
@@ -623,6 +657,7 @@ public class Node extends AbstractActor {
   // As a consequence we need to abort the leave operation and rollback the state.
   private void onTimeout_AnnounceDeparture(Message.Timeout_AnnounceDeparture msg){
     if(this.leave_response_counter > 0){  // there are still nodes which have not sent the ACK yet
+      this.timeout_AnnounceDeparture = true;
       System.out.println("["+this.getSelf().path().name()+"] [onTimeout_AnnounceDeparture] ABORT LEAVE because not all the ACK have been receiver from the target nodes.");
       this.peers.put(this.key, this.getSelf());
     }
@@ -691,6 +726,7 @@ public class Node extends AbstractActor {
 
     // if the bootstrapping peer does not send a response before the timeout
     // we abort the recovery process
+    this.timeout_ReqActiveNodeList_recover_expired = false;
     getContext().system().scheduler().scheduleOnce(
       Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
       this.getSelf(),                             // destination actor reference
@@ -704,6 +740,7 @@ public class Node extends AbstractActor {
   // --> abort recovery operation
   private void onTimeout_ReqActiveNodeList_recover(Message.Timeout_ReqActiveNodeList_recover msg){
     if(this.flag_reqActiveNodeList_recovery == false){
+      this.timeout_ReqActiveNodeList_recover_expired = true;
       System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReqActiveNodeList_recover] ABORT RECOVERY because no ResActiveNodeList has been received before timeout expiration.");
     }
   }
@@ -714,6 +751,12 @@ public class Node extends AbstractActor {
   // The bootstrapping node send the current list of the active nodes
   // to the node which is recovering from crash
   private void onResActiveNodeList_recovery(Message.ResActiveNodeList msg){
+
+    // ignore the message if the corresponding timeout has already expired
+    if(this.timeout_ReqActiveNodeList_recover_expired){
+      return;
+    }
+
     this.flag_reqActiveNodeList_recovery = true; // finally the ResActiveNodeList has been received, we can go on with the recovery operation without aborting
     System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList_recovery]");
 
@@ -749,6 +792,7 @@ public class Node extends AbstractActor {
 
     // if the clockwise neighbour peer does not send a response before the timeout
     // we abort the recovery process
+    this.timeout_ReqDataItemsResponsibleFor_recovery_expired = false;
     getContext().system().scheduler().scheduleOnce(
       Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
       this.getSelf(),                             // destination actor reference
@@ -763,6 +807,7 @@ public class Node extends AbstractActor {
   // --> abort recovery operation
   private void onTimeout_ReqDataItemsResponsibleFor_recovery(Message.Timeout_ReqDataItemsResponsibleFor_recovery msg){
     if(this.flag_reqDataItemsResponsibleFor_recovery == false){
+      this.timeout_ReqDataItemsResponsibleFor_recovery_expired = true;
       System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReqDataItemsResponsibleFor_recovery] ABORT RECOVERY because no ReqDataItemsResponsibleFor_recovery has been received before timeout expiration.");
       this.peers.clear();
 
@@ -805,6 +850,12 @@ public class Node extends AbstractActor {
   // the node which is currently in crash state receivers the items that are now under its responsability
   // from its clockwise neighbor
   private void onResDataItemsResponsibleFor_recovery(Message.ResDataItemsResponsibleFor msg){
+
+    // ignore the message if the corresponding timeout has already expired
+    if(this.timeout_ReqDataItemsResponsibleFor_recovery_expired){
+      return;
+    }
+
     this.flag_reqDataItemsResponsibleFor_recovery = true; // finally the ResDataItemsResponsibleFor has been received, we can go on with the recovery operation without aborting
     System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor_recovery]");
 
