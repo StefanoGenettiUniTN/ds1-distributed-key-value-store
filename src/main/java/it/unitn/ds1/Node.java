@@ -32,8 +32,9 @@ public class Node extends AbstractActor {
 
   private HashMap<Integer, HashSet<Integer>> nodeKeyToResponsibleItem; // data structure used in the context of the leave opreation
   private boolean flag_reqActiveNodeList;
-  private boolean flag_reqActiveNodeList_recover;
+  private boolean flag_reqActiveNodeList_recovery;
   private boolean flag_reqDataItemsResponsibleFor;
+  private boolean flag_reqDataItemsResponsibleFor_recovery;
 
   //-------------
 
@@ -51,7 +52,7 @@ public class Node extends AbstractActor {
     this.join_update_item_response_counter = 0;
     this.leave_response_counter = 0;
     this.flag_reqActiveNodeList = false;
-    this.flag_reqActiveNodeList_recover = false;
+    this.flag_reqActiveNodeList_recovery = false;
     this.flag_reqDataItemsResponsibleFor = false;
   }
 
@@ -99,6 +100,7 @@ public class Node extends AbstractActor {
       .match(Message.Timeout_JoinReadOperationReq.class, this::onTimeout_JoinReadOperationReq)
       .match(Message.Timeout_AnnounceDeparture.class, this::onTimeout_AnnounceDeparture)
       .match(Message.Timeout_ReqActiveNodeList_recover.class, this::onTimeout_ReqActiveNodeList_recover_ignore)
+      .match(Message.Timeout_ReqDataItemsResponsibleFor_recovery.class, this::onTimeout_ReqDataItemsResponsibleFor_recovery_ignore)
       .build();
   }
 
@@ -109,6 +111,7 @@ public class Node extends AbstractActor {
       .match(Message.ResActiveNodeList.class, this::onResActiveNodeList_recovery)
       .match(Message.ResDataItemsResponsibleFor.class, this::onResDataItemsResponsibleFor_recovery)
       .match(Message.Timeout_ReqActiveNodeList_recover.class, this::onTimeout_ReqActiveNodeList_recover)
+      .match(Message.Timeout_ReqDataItemsResponsibleFor_recovery.class, this::onTimeout_ReqDataItemsResponsibleFor_recovery)
       .matchAny(msg -> {
         System.out.println(getSelf().path().name() + " ignoring " + msg.getClass().getSimpleName() + " (crashed)");
       })
@@ -309,7 +312,7 @@ public class Node extends AbstractActor {
       for(ActorRef dest : readDestinationNodes){
         if(!dest.equals(this.getSender())){  // no read request is sent to the clockwise neighbor which has just sent the current set of items TODO: oppure ci sta mandarlo anche a lui?
           dest.tell(msg_JoinReadOperationReq, this.getSelf());
-          this.join_update_item_response_counter++;
+          this.join_update_item_response_counter++; // TODO: BASTA LEGGERNE R
         }
       }
       // TODO: riflettere se qui si può ridurre il numero di messaggi scambiati
@@ -643,7 +646,7 @@ public class Node extends AbstractActor {
     this.peers.clear();
 
     // i. requests the current set of nodes from a node specified in the recovery request;
-    this.flag_reqActiveNodeList_recover = false;
+    this.flag_reqActiveNodeList_recovery = false;
     bootstrappingPeer.tell(new Message.ReqActiveNodeList(), this.getSelf());
 
     // if the bootstrapping peer does not send a response before the timeout
@@ -660,7 +663,7 @@ public class Node extends AbstractActor {
   // the bootstrapping node is not sending a response
   // --> abort recovery operation
   private void onTimeout_ReqActiveNodeList_recover(Message.Timeout_ReqActiveNodeList_recover msg){
-    if(this.flag_reqActiveNodeList_recover == false){
+    if(this.flag_reqActiveNodeList_recovery == false){
       System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReqActiveNodeList_recover] ABORT RECOVERY because no ResActiveNodeList has been received before timeout expiration.");
     }
   }
@@ -671,7 +674,7 @@ public class Node extends AbstractActor {
   // The bootstrapping node send the current list of the active nodes
   // to the node which is recovering from crash
   private void onResActiveNodeList_recovery(Message.ResActiveNodeList msg){
-    this.flag_reqActiveNodeList_recover = true; // finally the ResActiveNodeList has been received, we can go on with the recovery operation without aborting
+    this.flag_reqActiveNodeList_recovery = true; // finally the ResActiveNodeList has been received, we can go on with the recovery operation without aborting
     System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList_recovery]");
 
     // retrive message data and initialize the list of peers
@@ -685,9 +688,11 @@ public class Node extends AbstractActor {
     this.peers.put(this.key, this.getSelf()); //TODO: forse nel msg.activeNodes c'è già il this.key
 
     // ii. the node which is recovering should discard those items that are no longer under its responsability
+    Set<Item> backup = new HashSet<>(); // we make a backup of those items that are no longer under the responsability of the present node. In this way, in the case of a timeout we can recover these items before aborting the recovery operation.
     for(Integer ik : this.items.keySet()){
       Set<Integer> responsibleNodes = this.getResponsibleNode(ik);
       if(!responsibleNodes.contains(this.key)){
+        backup.add(new Item(ik, this.items.get(ik).getValue(), this.items.get(ik).getVersion()));
         this.items.remove(ik);
       }
     }
@@ -696,9 +701,39 @@ public class Node extends AbstractActor {
     // this information can be retrived from the clockwise neighbor (which holds all items it needs)
     ActorRef clockwiseNeighbor = this.getClockwiseNeighbor();
     System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList_recovery] My clockwise neighbour is: "+clockwiseNeighbor);
+    this.flag_reqDataItemsResponsibleFor_recovery = false;
     Message.ReqDataItemsResponsibleFor_recovery clockwiseNeighborRequest = new Message.ReqDataItemsResponsibleFor_recovery(this.key, this.items.keySet());
     clockwiseNeighbor.tell(clockwiseNeighborRequest, this.getSelf());
+
+    // if the clockwise neighbour peer does not send a response before the timeout
+    // we abort the recovery process
+    getContext().system().scheduler().scheduleOnce(
+      Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
+      this.getSelf(),                             // destination actor reference
+      new Message.Timeout_ReqDataItemsResponsibleFor_recovery(Collections.unmodifiableSet(backup)),    // the message to send,
+      getContext().system().dispatcher(),         // system dispatcher
+      this.getSelf()                              // source of the message (myself)
+    );
+
   }
+
+  // the clockwise neighbour node is not sending a response
+  // --> abort recovery operation
+  private void onTimeout_ReqDataItemsResponsibleFor_recovery(Message.Timeout_ReqDataItemsResponsibleFor_recovery msg){
+    if(this.flag_reqDataItemsResponsibleFor_recovery == false){
+      System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReqDataItemsResponsibleFor_recovery] ABORT RECOVERY because no ReqDataItemsResponsibleFor_recovery has been received before timeout expiration.");
+      this.peers.clear();
+
+      // restore the data items that have been deleted by the present node during the recovery process
+      // because they would have been no more under its responsability
+      for(Item it : msg.backupItemSet){
+        this.items.put(it.getKey(), new Item(it.getKey(), it.getValue(), it.getVersion()));
+      }
+    }
+  }
+
+  // if the node is not crash and receives a Timeout_ReqDataItemsResponsibleFor_recovery message it has to ignore it
+  private void onTimeout_ReqDataItemsResponsibleFor_recovery_ignore(Message.Timeout_ReqDataItemsResponsibleFor_recovery msg){}
 
   // this message is received from a node which is recovering that is asking
   // to the present node the items that are now under its responsabilty
@@ -724,9 +759,11 @@ public class Node extends AbstractActor {
     this.getSender().tell(msg_response, this.getSelf());
   }
 
+  // iii. obtain the items that are now under its responsability
   // the node which is currently in crash state receivers the items that are now under its responsability
   // from its clockwise neighbor
   private void onResDataItemsResponsibleFor_recovery(Message.ResDataItemsResponsibleFor msg){
+    this.flag_reqDataItemsResponsibleFor_recovery = true; // finally the ResDataItemsResponsibleFor has been received, we can go on with the recovery operation without aborting
     System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor_recovery]");
 
     // retrive message data and add the data items the recovery node is responsible for.

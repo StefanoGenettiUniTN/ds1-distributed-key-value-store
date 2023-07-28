@@ -163,6 +163,15 @@ public class Message{
     // this timeout message is sent when there is no response for ReqDataItemsResponsibleFor message request
     public static class Timeout_ReqDataItemsResponsibleFor implements Serializable{}
 
+    // this timeout message is sent when there is no response for ReqDataItemsResponsibleFor_recovery message request
+    public static class Timeout_ReqDataItemsResponsibleFor_recovery implements Serializable{
+        public final Set<Item> backupItemSet;
+
+        public Timeout_ReqDataItemsResponsibleFor_recovery(Set<Item> _backupItemSet){
+            this.backupItemSet = Collections.unmodifiableSet(new HashSet<>(_backupItemSet));
+        }
+    }
+
     // this timeout message is sent when the joining node does not receive a ReadOperationReq message from one
     // or more of the nodes that are expected
     public static class Timeout_JoinReadOperationReq implements Serializable{}

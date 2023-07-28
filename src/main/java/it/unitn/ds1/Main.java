@@ -451,7 +451,44 @@ public class Main {
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
     // ...end print item set of the nodes
 
-    // ... end test timeout timeout ReqActiveNodeList_recover
+    // ... end test timeout ReqActiveNodeList_recover
+
+    // test timeout ReqDataItemsResponsibleFor_recovery
+    System.out.println("");
+    System.out.println("################################### test timeout ReqDataItemsResponsibleFor_recovery");
+    System.out.println("");
+
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n5 crash
+    n5.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n7 crash
+    n7.tell(new Message.CrashMsg(), ActorRef.noSender());
+
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n5 recover
+    n5.tell(new Message.RecoveryMsg(n6), ActorRef.noSender());
+
+    try { Thread.sleep(10000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n7 recover
+    n7.tell(new Message.RecoveryMsg(n6), ActorRef.noSender());
+    
+    try { Thread.sleep(3000); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    //// node n5 recover
+    n5.tell(new Message.RecoveryMsg(n6), ActorRef.noSender());
+
+    // ... end test timeout ReqDataItemsResponsibleFor_recovery
 
     try {
       System.out.println(">>> Press ENTER to exit <<<");
