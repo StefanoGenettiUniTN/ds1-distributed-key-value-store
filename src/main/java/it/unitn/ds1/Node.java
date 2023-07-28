@@ -266,57 +266,36 @@ public class Node extends AbstractActor {
 
       //--- perform read operations to ensure that the received items are up to date.
       //--- remark: no read request is sent to the clockwise neighbor which has just sent the current set of items
+      //--- for each item we compute the responsible nodes but for each item we send the read update request only towards at most R-1 nodes due to quorum constraints (remark: clockwise neighbour has already sent the message)
       Set<ActorRef> readDestinationNodes = new HashSet<>();
-      int n = this.N;
+      int r = this.R;
 
-      ArrayList<Integer> peerKeyList = new ArrayList<Integer>(this.peers.keySet());
-      int clockwiseNeighborIndex = -1;
-      for(int counter = 0; counter<peerKeyList.size(); counter++){  // get index of the clockwise neighbour in the list of peers
-        Integer pk = peerKeyList.get(counter);
-        if(this.peers.get(pk).equals(this.getSender())){
-          clockwiseNeighborIndex = counter;
-          break;
+      for(Integer ik : this.items.keySet()){
+        Iterator<Integer> it = (new TreeSet<Integer>(this.getResponsibleNode(ik))).iterator();  // sort the elements to minimize the number of messages
+        for(int threshold=0; threshold<r-1; threshold++){ // we send the read update request only towards at most R-1 nodes due to quorum constraints (remark: clockwise neighbour has already sent the message)
+          if(it.hasNext()){
+            Integer it_next_key = it.next();
+            if(this.peers.get(it_next_key).equals(this.getSender())){ // we have to ignore the clockwise neighbour which has already sent a response
+              if(!it.hasNext()){break;};
+              it_next_key = it.next();
+            }
+            readDestinationNodes.add(this.peers.get(it_next_key));    
+          }else{
+            break;
+          }
         }
-      }
-
-      // send the read request to the N-1 nodes after the clockwise neighbor of the joining node 
-      for(int i=1; i<=n-1; i++){
-        readDestinationNodes.add( 
-          this.peers.get(
-            peerKeyList.get(
-              (clockwiseNeighborIndex + i)%peerKeyList.size()
-            )
-          )
-        );
-      }
-
-      // send the read request to the N-1 nodes before the clockwise neighbor of the joining node 
-      for(int i=1; i<=n-1; i++){
-        int pos = clockwiseNeighborIndex - i; 
-        if(pos < 0){
-          pos = peerKeyList.size() + pos;
-        }
-        readDestinationNodes.add( 
-          this.peers.get(
-            peerKeyList.get(pos)
-          )
-        );
       }
 
       // send read operation
       Set<Item> itemSet = new HashSet<>();
       for(Item item : this.items.values()){
-        itemSet.add(item);
+        itemSet.add(new Item(item));  // TODO: creare così è ok?
       }
-      Message.JoinReadOperationReq msg_JoinReadOperationReq = new Message.JoinReadOperationReq(Collections.unmodifiableSet(itemSet));
+      Message.JoinReadOperationReq msg_JoinReadOperationReq = new Message.JoinReadOperationReq(Collections.unmodifiableSet(itemSet)); // TODO: riflettere se mandare a tutti l'intero itemSet oppure solo la parte della quale il dest è responsabile
       for(ActorRef dest : readDestinationNodes){
-        if(!dest.equals(this.getSender())){  // no read request is sent to the clockwise neighbor which has just sent the current set of items TODO: oppure ci sta mandarlo anche a lui?
-          dest.tell(msg_JoinReadOperationReq, this.getSelf());
-          this.join_update_item_response_counter++; // TODO: BASTA LEGGERNE R
-        }
+        dest.tell(msg_JoinReadOperationReq, this.getSelf());
+        this.join_update_item_response_counter++;
       }
-      // TODO: riflettere se qui si può ridurre il numero di messaggi scambiati
-      // inviando solo ai nodi che effettivamente possono essere i responsabili di un item
       //---
     }
 
