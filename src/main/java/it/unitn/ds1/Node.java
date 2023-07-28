@@ -1092,7 +1092,10 @@ public class Node extends AbstractActor {
         Set<Integer> nodes = getResponsibleNode(msg.itemId);
 
         if(nodes.contains(this.key)){
-          this.locks.remove(msg.itemId);
+          Integer checkLock = this.locks.get(msg.itemId);
+          if(checkLock != null && checkLock == this.key) {
+            this.locks.remove(msg.itemId);
+          }
         }
 
         for (int node : nodes) {
