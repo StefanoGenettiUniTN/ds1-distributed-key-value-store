@@ -718,8 +718,10 @@ public class Node extends AbstractActor {
       Set<Integer> responsibleNodes = this.getResponsibleNode(ik);
       if(!responsibleNodes.contains(this.key)){
         backup.add(new Item(ik, this.items.get(ik).getValue(), this.items.get(ik).getVersion()));
-        this.items.remove(ik);
       }
+    }
+    for(Item backup_item : backup){
+      this.items.remove(backup_item.getKey());
     }
 
     // the node which is recovering should obtain the items that are now under its responsability
