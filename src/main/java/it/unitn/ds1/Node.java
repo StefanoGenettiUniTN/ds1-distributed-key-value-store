@@ -22,7 +22,7 @@ public class Node extends AbstractActor {
   private final Map<Integer, Integer> locks;    // lock mapping used to manage concurrent write
 
   private int key;  // node key
-  private int counterRequest;
+  private int counterRequest; // Number of request performed from the node as coordinator
 
   //----FLAGS----
   private Map<Integer, Integer> join_update_item_response_counter;  // the joining node performs read operations to ensure that its items are up to date.
@@ -1017,7 +1017,8 @@ public class Node extends AbstractActor {
   //Return information of an item to the coordinator
   private void onRead(Message.Read msg){
     Item item = this.items.get(msg.item.getKey());
-    if(item != null) {
+    Integer checkLock = this.locks.get(msg.item.getKey());
+    if(checkLock == null && item != null) {
       System.out.println("[" + this.getSelf().path().name() + "] [onRead] Owner: " + key + " ITEM: " + item);
       // model a random network/processing delay
       try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
@@ -1155,7 +1156,10 @@ public class Node extends AbstractActor {
         );
       } else if (nW == this.W) { // this should be only if W is 1
         item.setVersion(item.getVersion() + 1);
-        this.locks.remove(item.getKey());
+        Integer checkLock = this.locks.get(item.getKey());
+        if(checkLock != null && checkLock == this.key) {
+          this.locks.remove(item.getKey());
+        }
         this.requests.remove(counterRequest);
         // model a random network/processing delay
         try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
@@ -1228,7 +1232,7 @@ public class Node extends AbstractActor {
           try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
           catch (InterruptedException e) { e.printStackTrace(); }
 
-          (peers.get(node)).tell(new Message.Write(itemReq), this.getSelf());
+          (peers.get(node)).tell(new Message.Write(this.key, itemReq), this.getSelf());
         }
       }
     }
@@ -1237,7 +1241,10 @@ public class Node extends AbstractActor {
   //Update item and send element to the coordinator
   private void onWrite(Message.Write msg){
     Item item = new Item(msg.item);
-    this.locks.remove(item.getKey());
+    Integer checkLock = this.locks.get(item.getKey());
+    if(checkLock != null && checkLock == msg.coordinatorId) {
+      this.locks.remove(item.getKey());
+    }
     this.items.put(item.getKey(), item);
     System.out.println("["+this.getSelf().path().name()+"] [onWriteInformation] Owner: " + key + " ITEM: " + item);
   }

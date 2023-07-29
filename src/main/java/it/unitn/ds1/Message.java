@@ -253,8 +253,10 @@ public class Message{
 
     // This class represents a message to write the new item
     public static class Write implements Serializable {
+        public final int coordinatorId;
         public final Item item;
-        public Write(Item item) {
+        public Write(int coordinatorId, Item item) {
+            this.coordinatorId = coordinatorId;
             this.item = item;
         }
     }
