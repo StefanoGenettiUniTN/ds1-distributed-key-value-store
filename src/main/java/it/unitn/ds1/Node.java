@@ -34,7 +34,7 @@ public class Node extends AbstractActor {
                                       // after its departure. We wait until each of these nodes send an ACK back. Indeed it is
                                       // possible that some of them are currently in crash state. Consequently, if we send the
                                       // items blindly, we could lose data items or violate replication requirements
-  private boolean timeout_AnnounceDeparture;
+  private boolean timeout_AnnounceDeparture_expired;
 
   private HashMap<Integer, HashSet<Integer>> nodeKeyToResponsibleItem; // data structure used in the context of the leave opreation
   private boolean flag_reqActiveNodeList;
@@ -66,7 +66,7 @@ public class Node extends AbstractActor {
     this.join_update_item_response_counter = new HashMap<>();
     this.flag_ignore_further_read_update = false;
     this.leave_response_counter = 0;
-    this.timeout_AnnounceDeparture = false;
+    this.timeout_AnnounceDeparture_expired = false;
     this.flag_reqActiveNodeList = false;
     this.timeout_ReqActiveNodeList_expired = false;
     this.flag_reqActiveNodeList_recovery = false;
@@ -90,7 +90,6 @@ public class Node extends AbstractActor {
   @Override
   public Receive createReceive() {
     return receiveBuilder()
-      .match(Message.Hello.class, this::onHello)
       .match(Message.PrintNodeList.class, this::onPrintNodeList)
       .match(Message.PrintItemList.class, this::onPrintItemList)
       .match(Message.InitSystem.class, this::onInit)
@@ -141,20 +140,10 @@ public class Node extends AbstractActor {
   }
 
   /*===MESSAGE HANDLERS===*/
-  
-  // Here we define our reaction on the received Hello messages
-  private void onHello(Message.Hello h) {
-    System.out.println("[" +
-            getSelf().path().name() +      // the name of the current actor
-            "] received a message from " +
-            getSender().path().name() +    // the name of the sender actor
-            ": " + h.msg                   // finally the message contents
-    );
-  }
 
   // First node in the network receives this message and
   // initializes the system adding itself to the group
-  private void onInit(Message.InitSystem msg){
+  private void onInit(Message.InitSystem msg){  // TODO: aggiungere InitSystem message alla documentazione
     System.out.println("["+this.getSelf().path().name()+"] [InitSystem] Node key: "+this.key);
     this.peers.put(this.key, this.getSelf());
   }
@@ -171,17 +160,16 @@ public class Node extends AbstractActor {
 
     // ask to the bootstrapping peer the current list of active nodes
     this.flag_reqActiveNodeList = false;
+    this.timeout_ReqActiveNodeList_expired = false;
     Message.ReqActiveNodeList reqActiveNodeListMsg = new Message.ReqActiveNodeList();
 
     // model a random network/processing delay
     try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
     catch (InterruptedException e) { e.printStackTrace(); }
-
     msg_bootstrappingPeer.tell(reqActiveNodeListMsg, this.getSelf());
 
     // if the bootstrapping peer does not send a response before the timeout
     // we abort the join process
-    this.timeout_ReqActiveNodeList_expired = false;
     getContext().system().scheduler().scheduleOnce(
       Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
       this.getSelf(),                             // destination actor reference
@@ -242,17 +230,16 @@ public class Node extends AbstractActor {
 
     // request data items the joining node is responsible for from its clockwise neighbor (which holds all items it needs)
     this.flag_reqDataItemsResponsibleFor = false;
+    this.timeout_ReqDataItemsResponsibleFor_expired = false;
     Message.ReqDataItemsResponsibleFor clockwiseNeighborRequest = new Message.ReqDataItemsResponsibleFor(this.key);
 
     // model a random network/processing delay
     try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
     catch (InterruptedException e) { e.printStackTrace(); }
-
     clockwiseNeighbor.tell(clockwiseNeighborRequest, this.getSelf());
 
     // if the clocwise neighbour peer does not send a response before the timeout
     // we abort the join operation
-    this.timeout_ReqDataItemsResponsibleFor_expired = false;
     getContext().system().scheduler().scheduleOnce(
       Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
       this.getSelf(),                             // destination actor reference
@@ -340,7 +327,7 @@ public class Node extends AbstractActor {
       // send read operation
       Set<Item> itemSet = new HashSet<>();
       for(Item item : this.items.values()){
-        itemSet.add(new Item(item));  // TODO: creare così è ok?
+        itemSet.add(new Item(item));
       }
       Message.JoinReadOperationReq msg_JoinReadOperationReq = new Message.JoinReadOperationReq(Collections.unmodifiableSet(itemSet)); // TODO: riflettere se mandare a tutti l'intero itemSet oppure solo la parte della quale il dest è responsabile
       for(ActorRef dest : readDestinationNodes){
@@ -491,8 +478,6 @@ public class Node extends AbstractActor {
 
     // retrive message data
     int msg_key = msg.key;  // the key of the new node which is asking to join the system
-    Set<Integer> msg_keyItemSet = new HashSet<>();
-    msg_keyItemSet.addAll(msg.keyItemSet);  // TODO: riflettere se è giusto così dal punto di vista dell'immutable final e quelle cose la, magari visto che è solo lettura, posso anche leggere dal messaggio simplicemente
 
     // add the new node to the current list of active nodes
     this.peers.put(msg_key, this.getSender());
@@ -500,7 +485,7 @@ public class Node extends AbstractActor {
     // for each item in keyItemSet which is also in this.items, check if
     // the present node is still responsible for. Consequently, remove the data items
     // the present node is no longer responsible for. 
-    for(Integer itemKey : msg_keyItemSet){
+    for(Integer itemKey : msg.keyItemSet){
       if(this.items.keySet().contains(itemKey)){
         if(!this.getResponsibleNode(itemKey).contains(this.key)){  // the present node is no more responsible for this item
           this.items.remove(itemKey); // remove the item
@@ -554,6 +539,7 @@ public class Node extends AbstractActor {
     // which are going to become responsible of some data items after the departure of the
     // present node, are not crashed. To avoid this we send an PreLeaveStatusCheck message.
     this.leave_response_counter = 0;
+    this.timeout_AnnounceDeparture_expired = false;
     for (Integer peerKey : this.peers.keySet()) {
       if(!this.nodeKeyToResponsibleItem.get(peerKey).isEmpty()){
         // set leave response counter, i.e. the number of ACK that we have to wait before completing the leave operation
@@ -593,7 +579,6 @@ public class Node extends AbstractActor {
     }else{  // set timeout
       // if the peers which should become responsible of some of the data items of the present node
       // does not send an ack withing the timeout interval,  we abort the leave operation
-      this.timeout_AnnounceDeparture = false;
       getContext().system().scheduler().scheduleOnce(
         Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
         this.getSelf(),                             // destination actor reference
@@ -616,7 +601,7 @@ public class Node extends AbstractActor {
   private void onDepartureAck(Message.DepartureAck msg){
 
     // ignore the message if the corresponding timeout has already expired
-    if(this.timeout_AnnounceDeparture){
+    if(this.timeout_AnnounceDeparture_expired){
       return;
     }
 
@@ -657,7 +642,7 @@ public class Node extends AbstractActor {
   // As a consequence we need to abort the leave operation and rollback the state.
   private void onTimeout_AnnounceDeparture(Message.Timeout_AnnounceDeparture msg){
     if(this.leave_response_counter > 0){  // there are still nodes which have not sent the ACK yet
-      this.timeout_AnnounceDeparture = true;
+      this.timeout_AnnounceDeparture_expired = true;
       System.out.println("["+this.getSelf().path().name()+"] [onTimeout_AnnounceDeparture] ABORT LEAVE because not all the ACK have been receiver from the target nodes.");
       this.peers.put(this.key, this.getSelf());
     }
@@ -720,13 +705,13 @@ public class Node extends AbstractActor {
     // i. requests the current set of nodes from a node specified in the recovery request;
     // model a random network/processing delay
     this.flag_reqActiveNodeList_recovery = false;
+    this.timeout_ReqActiveNodeList_recover_expired = false;
     try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
     catch (InterruptedException e) { e.printStackTrace(); }
     bootstrappingPeer.tell(new Message.ReqActiveNodeList(), this.getSelf());
 
     // if the bootstrapping peer does not send a response before the timeout
     // we abort the recovery process
-    this.timeout_ReqActiveNodeList_recover_expired = false;
     getContext().system().scheduler().scheduleOnce(
       Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
       this.getSelf(),                             // destination actor reference
@@ -787,12 +772,12 @@ public class Node extends AbstractActor {
     ActorRef clockwiseNeighbor = this.getClockwiseNeighbor();
     System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList_recovery] My clockwise neighbour is: "+clockwiseNeighbor);
     this.flag_reqDataItemsResponsibleFor_recovery = false;
+    this.timeout_ReqDataItemsResponsibleFor_recovery_expired = false;
     Message.ReqDataItemsResponsibleFor_recovery clockwiseNeighborRequest = new Message.ReqDataItemsResponsibleFor_recovery(this.key, this.items.keySet());
     clockwiseNeighbor.tell(clockwiseNeighborRequest, this.getSelf());
 
     // if the clockwise neighbour peer does not send a response before the timeout
     // we abort the recovery process
-    this.timeout_ReqDataItemsResponsibleFor_recovery_expired = false;
     getContext().system().scheduler().scheduleOnce(
       Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
       this.getSelf(),                             // destination actor reference

@@ -11,13 +11,6 @@ import java.util.TreeMap;
 import java.util.Set;
 
 public class Message{
-    // This class represents a message our actor will receive
-    public static class Hello implements Serializable {
-        public final String msg;
-        public Hello(String msg) {
-        this.msg = msg;
-        }
-    }
 
     // Message sent to the initiator node of the system
     public static class InitSystem implements Serializable {}
