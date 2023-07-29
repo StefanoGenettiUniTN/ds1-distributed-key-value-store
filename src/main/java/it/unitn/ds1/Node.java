@@ -10,22 +10,23 @@ import java.util.concurrent.TimeUnit;
 import scala.concurrent.duration.Duration;
 
 public class Node extends AbstractActor {
-  private final int key;                  // node key
   private final int N;
   private final int R;
   private final int W;
   private final int T;
   private final int MAXRANDOMDELAYTIME = 1;
   private final Random rnd;
-  private int counterRequest;
   private final Map<Integer, ActorRef> peers;   // peers[K] points to the node in the group with key K
   private final Map<Integer, Item> items;       // the set of data item the node is currently responsible for
-  private final Map<Integer, Request> requests; // Lists of the requests
-  private final Map<Integer, Integer> locks; //Lock mapping used to manage concurrent write
+  private final Map<Integer, Request> requests; // lists of the requests
+  private final Map<Integer, Integer> locks;    // lock mapping used to manage concurrent write
+
+  private int key;  // node key
+  private int counterRequest;
 
   //----FLAGS----
-  private final Map<Integer, Integer> join_update_item_response_counter;  // the joining node performs read operations to ensure that its items are up to date.
-                                                                          // join_update_item_response_counter[item_key] :: the number of version update received about item with key item_key
+  private Map<Integer, Integer> join_update_item_response_counter;  // the joining node performs read operations to ensure that its items are up to date.
+                                                                    // join_update_item_response_counter[item_key] :: the number of version update received about item with key item_key
   
   private boolean flag_ignore_further_read_update;  // flag_ignore_further_read_update == true --> the joining node receive the updated data items from a sufficient number of peers.
                                                     // Hence we can ignore further read update                                                                        
@@ -50,12 +51,11 @@ public class Node extends AbstractActor {
 
   //-------------
 
-  public Node(int _key, int n, int r, int w, int t){
+  public Node(int n, int r, int w, int t){
     this.N = n;
     this.R = r;
     this.W = w;
     this.T = t;
-    this.key = _key;
     this.rnd = new Random();
     this.peers = new TreeMap<>();
     this.items = new HashMap<>();
@@ -82,8 +82,8 @@ public class Node extends AbstractActor {
     System.out.println("["+this.getSelf().path().name()+"] [preStart] Node key: "+this.key);
   }
 
-  static public Props props(int _key, int n, int r, int w, int t) {
-    return Props.create(Node.class, () -> new Node(_key, n, r, w, t));
+  static public Props props(int n, int r, int w, int t) {
+    return Props.create(Node.class, () -> new Node(n, r, w, t));
   }
 
   // Mapping between the received message types and actor methods
@@ -145,6 +145,7 @@ public class Node extends AbstractActor {
   // initializes the system adding itself to the group
   private void onInit(Message.InitSystem msg){  // TODO: aggiungere InitSystem message alla documentazione
     System.out.println("["+this.getSelf().path().name()+"] [InitSystem] Node key: "+this.key);
+    this.key = msg.key;
     this.peers.put(this.key, this.getSelf());
   }
 
@@ -155,7 +156,7 @@ public class Node extends AbstractActor {
     System.out.println("["+this.getSelf().path().name()+"] [onJoinMsg]");
 
     // retrive message data
-    int msg_key = msg.key;  // TODO: risolvere queste key usandola invece di metterla nel costruttore
+    this.key = msg.key;
     ActorRef msg_bootstrappingPeer = msg.bootstrappingPeer;
 
     // ask to the bootstrapping peer the current list of active nodes

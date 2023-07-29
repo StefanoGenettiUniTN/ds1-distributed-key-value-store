@@ -13,7 +13,13 @@ import java.util.Set;
 public class Message{
 
     // Message sent to the initiator node of the system
-    public static class InitSystem implements Serializable {}
+    public static class InitSystem implements Serializable {
+        public final int key;
+        
+        public InitSystem(int _key){
+            this.key = _key;
+        }
+    }
 
     // Join message
     public static class JoinMsg implements Serializable {

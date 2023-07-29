@@ -24,10 +24,10 @@ public class Main {
     // 1. Create node group
 
     //// create node n1
-    ActorRef n1 = system.actorOf(Node.props(20, N, R, W, T),"n1");
+    ActorRef n1 = system.actorOf(Node.props(N, R, W, T),"n1");
 
     //// send init system to n1
-    n1.tell(new Message.InitSystem(), ActorRef.noSender());
+    n1.tell(new Message.InitSystem(20), ActorRef.noSender());
 
     try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
@@ -35,7 +35,7 @@ public class Main {
     n1.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
 
     //// create node n2
-    ActorRef n2 = system.actorOf(Node.props(30, N, R, W, T),"n2");
+    ActorRef n2 = system.actorOf(Node.props(N, R, W, T),"n2");
 
     //// send to n2 the message to allow it joininig the network
     n2.tell(new Message.JoinMsg(30, n1), ActorRef.noSender());
@@ -52,7 +52,7 @@ public class Main {
     catch (InterruptedException e) { e.printStackTrace(); }
 
     //// create node n3
-    ActorRef n3 = system.actorOf(Node.props(40, N, R, W, T),"n3");
+    ActorRef n3 = system.actorOf(Node.props(N, R, W, T),"n3");
 
     //// send to n3 the message to allow it joining the network
     n3.tell(new Message.JoinMsg(40, n1), ActorRef.noSender());
@@ -147,8 +147,8 @@ public class Main {
     try { Thread.sleep(2 * T * 1000); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
-    ActorRef n4 = system.actorOf(Node.props(10, N, R, W, T),"n4");
-    ActorRef n5 = system.actorOf(Node.props(50, N, R, W, T),"n5");
+    ActorRef n4 = system.actorOf(Node.props(N, R, W, T),"n4");
+    ActorRef n5 = system.actorOf(Node.props(N, R, W, T),"n5");
 
     n4.tell(new Message.JoinMsg(10, n1), ActorRef.noSender());
 
@@ -243,7 +243,7 @@ public class Main {
     catch (InterruptedException e) { e.printStackTrace(); }
 
     //// create node n6
-    ActorRef n6 = system.actorOf(Node.props(40, N, R, W, T),"n6");
+    ActorRef n6 = system.actorOf(Node.props(N, R, W, T),"n6");
 
     //// send to n6 the message to allow it joininig the network
     n6.tell(new Message.JoinMsg(40, n5), ActorRef.noSender());
@@ -266,7 +266,7 @@ public class Main {
     // ...end print item set of the nodes
 
     //// create node n7
-    ActorRef n7 = system.actorOf(Node.props(65, N, R, W, T),"n7");
+    ActorRef n7 = system.actorOf(Node.props(N, R, W, T),"n7");
 
     //// send to n7 the message to allow it joininig the network
     n7.tell(new Message.JoinMsg(65, n5), ActorRef.noSender());
@@ -337,7 +337,7 @@ public class Main {
     catch (InterruptedException e) { e.printStackTrace(); }
 
     ///// join n8
-    ActorRef n8 = system.actorOf(Node.props(64, N, R, W, T),"n8");
+    ActorRef n8 = system.actorOf(Node.props(N, R, W, T),"n8");
     n8.tell(new Message.JoinMsg(64, n7), ActorRef.noSender());
 
     try { Thread.sleep(10000); }
