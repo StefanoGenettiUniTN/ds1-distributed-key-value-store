@@ -7,7 +7,7 @@ import akka.actor.ActorSystem;
 
 public class Main {
 
-  final static int N = 2; // degree of replication
+  final static int N = 3; // degree of replication
   final static int R = 2; // read quorum
   final static int W = 2; // write quorum
   final static int T = 5; // timeout
@@ -16,7 +16,7 @@ public class Main {
 
   public static void main(String[] args) {
     if(R + W <= N || W <= N/2){
-      System.out.println("N, R e W non sono stati settati correttamente per sequential consistency");
+      System.out.println("Parameters N, W and R are set wrongly");
       return;
     }
 

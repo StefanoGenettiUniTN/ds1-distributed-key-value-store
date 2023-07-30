@@ -6,9 +6,9 @@ enum Type { GET, UPDATE }
 
 public class Request {
     ActorRef client; //client that request the operation
-    Item item;
+    Item item;  //Item relative to the request
     int counter; //counter used to reach R or W
-    Type type;
+    Type type; // type of operation
 
     public Request(ActorRef _client, Item _item, Type _type){
         client = _client;

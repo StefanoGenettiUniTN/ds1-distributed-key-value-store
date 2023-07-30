@@ -145,7 +145,7 @@ public class Message{
     // Message to trigger the print of the list of items
     public static class PrintItemList implements Serializable {}
 
-    // This class represents a timeoutExpiration
+    // This class represents a timeoutExpiration for get or update operation
     public static class Timeout implements Serializable {
         public final int requestId;
         public final Lock lock;
@@ -157,7 +157,7 @@ public class Message{
         }
     }
 
-    // This class represents a message to release clocks
+    // This class represents a message to release locks of an item
     public static class ReleaseLock implements Serializable {
         public final Lock lock;
         public final int itemId;
@@ -193,7 +193,7 @@ public class Message{
     // of the nodes that should become responsible of its data items after the departure
     public static class Timeout_AnnounceDeparture implements Serializable{}
 
-    // This class represents a message to get an item
+    // This class represents the request message to get the updated version of an item
     public static class GetRequest implements Serializable {
         public final Item item;
         public GetRequest(Item item) {
@@ -201,17 +201,7 @@ public class Message{
         }
     }
 
-    // this class represents all the information of an item
-    public static class ReadItemInformation implements Serializable {
-        public final int requestId;
-        public final Item item;
-        public ReadItemInformation(int requestId, Item item) {
-            this.requestId = requestId;
-            this.item = item;
-        }
-    }
-
-    // This class represents a message to read an item
+    // This class represents a message to request the owner of an item to return the version it owns
     public static class Read implements Serializable {
         public final int requestId;
         public final Item item;
@@ -221,7 +211,19 @@ public class Message{
         }
     }
 
-    // This class represents a message to update an item
+    //This class represents a message with all the information of an item that the node owns
+    public static class ReadItemInformation implements Serializable {
+        public final int requestId;
+        public final Item item;
+        public ReadItemInformation(int requestId, Item item) {
+            this.requestId = requestId;
+            this.item = item;
+        }
+    }
+
+
+
+    // This class represents a request message to update the item with the new value and version
     public static class UpdateRequest implements Serializable {
         public final String clientName;
         public final Item item;
@@ -231,7 +233,7 @@ public class Message{
         }
     }
 
-    // This class represents a message to get the version of an item
+    // This class represents a message to request the version of the item that has to be updated
     public static class Version implements Serializable {
         public final Lock lock;
         public final int requestId;
@@ -243,7 +245,7 @@ public class Message{
         }
     }
 
-    // this class represents all the information to update an item
+    // This class represents a message that returns the version of the item
     public static class UpdateVersion implements Serializable {
         public final int requestId;
         public final Lock lock;
@@ -255,7 +257,7 @@ public class Message{
         }
     }
 
-    // This class represents a message to write the new item
+    // This class represents a message to write the new item, with the updated version
     public static class Write implements Serializable {
         public final Lock lock;
         public final Item item;

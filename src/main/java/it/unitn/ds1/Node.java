@@ -14,7 +14,7 @@ public class Node extends AbstractActor {
   private final int R;
   private final int W;
   private final int T;
-  private final int MAXRANDOMDELAYTIME = 1;
+  private final int MAXRANDOMDELAYTIME = 1; //Maximum delay time in seconds
   private final Random rnd;
   private final Map<Integer, ActorRef> peers;   // peers[K] points to the node in the group with key K
   private final Map<Integer, Item> items;       // the set of data item the node is currently responsible for
@@ -874,17 +874,25 @@ public class Node extends AbstractActor {
     Set<Integer> responsibleNode = new HashSet<>();
     int n = this.N;
 
+    //For each node, check if it is responsible for the item based on the key
     for (Map.Entry<Integer, ActorRef> entry : peers.entrySet()) {
+      //A node is responsible for an item if N > 0 and the key of the item is lower than the key of the nodes
       if(n > 0 && key < entry.getKey()){
+        //If the condition is satisfied we add the key of the node and decrease N, which is the number of nodes responsible for an item
         responsibleNode.add(entry.getKey());
         n--;
       }
 
+      //If we get enough nodes, we can stop locking at the nodes
       if(n <= 0){
         break;
       }
     }
 
+    //If N is greater than 0, this means that we have not enough nodes and we will made the first nodes responsible for the item
+    //i. this happens when the key of the item is greated of all the item of the nodes or when
+    //ii. we have not enough nodes with a greater key than the item key
+    //In both cases the items will be assigned to the first N available nodes
     if(n > 0){
       for (Map.Entry<Integer, ActorRef> entry : peers.entrySet()) {
         if(n > 0){
@@ -972,19 +980,38 @@ public class Node extends AbstractActor {
 
   /*----------GET----------*/
 
-  // Coordinator manage get request
+  //The Get operation is performed in this way:
+  //a. the coordinator receive the request from the client and contact the N responsible nodes for reading the item
+  //b. the responsible nodes return the item they own
+  //c. coordinator waits for R replies and then return to the client the last version of the item requests
+
+
+  //a. the coordinator receive the request from the client and contact the N responsible nodes for reading the item
+
+  // This is the request from the client to the node coordinator for the operation. This operation will be executed in this order:
+  // i. set a new counterrequest for the request
+  // ii. get the responsible nodes for the item provided
+  // iii. if the coordinator is one of the responsible nodes it will read it
+  // iV. check if the quorum R is reached
+  // V. if it is not reached ask to the other responsible nodes
+  // VI. if it is reached return the response and delete the request
   private void onGetRequest(Message.GetRequest msg){
     Item item =  new Item(msg.item);
     System.out.println("["+this.getSelf().path().name()+"] [onGet] Coordinator");
 
+    // i. set a new counterrequest for the request
     counterRequest++;
     Request req = new Request(this.getSender(), new Item(key, ""), Type.GET);
     this.requests.put(counterRequest, req);
 
-    ///se sono responsabile, aggiorno item, controllo se R = 1 (semmai invio risposta), in caso contrario eseguo codice sotto
+    // ii. get the responsible nodes for the item provided
     Set<Integer> respNodes = getResponsibleNode(item.getKey());
 
+    // iii. if the coordinator is one of the responsible nodes it will read it
     if(respNodes.contains(this.key)){
+      //Check if no lock is present on the item
+      // if no lock is set, the coordinator can read the item
+      // if it is set, the coordinator cannot read the item since a write operation is ongoing and version problems could arise
       if(this.items.containsKey(item.getKey()) && this.locks.get(item.getKey()) == null) {
         req.setCounter(req.getCounter() + 1);
         item.setVersion(msg.item.getVersion());
@@ -994,8 +1021,11 @@ public class Node extends AbstractActor {
 
     int nR = req.getCounter();
 
+    // iV. check if the quorum R is reached
     if(nR < this.R) {
+      //Send a message to all the responsible nodes
       for (int node : respNodes) {
+        //Avoid to send the message to itself (message directly read before)
         if(node != this.key) {
           // model a random network/processing delay
           try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
@@ -1004,7 +1034,7 @@ public class Node extends AbstractActor {
         }
       }
 
-      //Timeout
+      //Set a timeout that will expire if not enough (R) replies arrives
       getContext().system().scheduler().scheduleOnce(
               Duration.create(Main.T, TimeUnit.SECONDS),
               this.getSelf(),
@@ -1013,44 +1043,67 @@ public class Node extends AbstractActor {
       );
     } else if (nR == this.R){ // this should happen only if R is set to 1
       System.out.println("["+this.getSelf().path().name()+"] [onDirectReadItemInformation] Owner");
+      //Remove the request from the array
       this.requests.remove(counterRequest);
       // model a random network/processing delay
       try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
       catch (InterruptedException e) { e.printStackTrace(); }
+      //Return the result of the read operation
       req.getClient().tell(new ClientMessage.GetResult(Result.SUCCESS, item), ActorRef.noSender());
     }
   }
 
-  //Return information of an item to the coordinator
+
+  //b. the responsible nodes return the item they own
+
+  //Manage the request to read an item
+  // i. firstly check if a lock is not set (not writing operation ongoing) and if the item is not null (item stored)
+  // ii. return the item stored
   private void onRead(Message.Read msg){
     Item item = this.items.get(msg.item.getKey());
     Lock checkLock = this.locks.get(msg.item.getKey());
+    // i. firstly check if a lock is not set (not writing operation ongoing) and if the item is not null (item stored)
     if(checkLock == null && item != null) {
       System.out.println("[" + this.getSelf().path().name() + "] [onRead] Owner: " + key + " ITEM: " + item);
       // model a random network/processing delay
       try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
       catch (InterruptedException e) { e.printStackTrace(); }
+      // ii. return the item stored
       this.getSender().tell(new Message.ReadItemInformation(msg.requestId, item), ActorRef.noSender());
     }
   }
 
-  //Return information to the client
+  //c. coordinator waits for R replies and then return to the client the last version of the item requests
+
+  //Coordinator has to manage the replies for get operation request in this way
+  // i. check if request is set (if the timeout has not expired)
+  // ii. Increase the number of replies received
+  // iii. Check if the version sent is newer than the one actually stored
+  // iV. if yes, update the value and the version
+  // V. check if the quorum R is reached
+  // Vi. if it is reached remove the request and return the updated item
   private void onReadItemInformation(Message.ReadItemInformation msg){
     System.out.println("["+this.getSelf().path().name()+"] [onReadItemInformation] Owner");
 
     Request req = this.requests.get(msg.requestId);
 
+    // i. check if request is set (if the timeout has not expired)
     if(req != null) {
+      // ii. Increase the number of replies received
       req.setCounter(req.getCounter() + 1);
       int nR = req.getCounter();
 
       Item item = req.getItem();
+      // iii. Check if the version sent is newer than the one actually stored
       if(msg.item.getVersion() > item.getVersion()){
+        // iV. if yes, update the value and the version
         item.setVersion(msg.item.getVersion());
         item.setValue(msg.item.getValue());
       }
 
+      // V. check if the quorum R is reached
       if(nR == this.R) {
+        // Vi. if it is reached remove the request and return the updated item
         this.requests.remove(msg.requestId);
 
         // model a random network/processing delay
@@ -1064,35 +1117,55 @@ public class Node extends AbstractActor {
 
   /*----------END GET----------*/
 
+  //Manage the release of the lock; check if the lock is the one that corresponds to the one requested
+  // if the condition is satisfied, remove the lock
   private void onReleaseLock(Message.ReleaseLock msg){
     Lock lock = this.locks.get(msg.itemId);
-    if(lock != null && lock == msg.lock){
+    if(lock != null && lock.equals(msg.lock)){
       this.locks.remove(msg.itemId);
     }
   }
 
   /*----------TIMEOUT----------*/
 
+  //Manage the timeout for the read and write operation in this way
+  // i. Check if the request is set, if it is set
+  // ii. Check if the operation requested is a read or write
+  // iii. if the operation is a get, simply return the errot get response
+  // iV. if it is a write operation, do:
+  // V. get the list of the responsible nodes
+  // Vi. Check if the coordinator is one of the responsible nodes
+  // Vii. if the coordinator is one of the responsible nodes and the lock corresponds to the one requested, remove it
+  // Viii. Ask to the other nodes to release the requested lock
+  // iX. return the error write operation response
   private void onTimeout(Message.Timeout msg){
+    // i. Check if the request is set, if it is set
     if(this.requests.containsKey(msg.requestId) == true){
       Request req = this.requests.remove(msg.requestId);
+      // ii. Check if the operation requested is a read or write
       if(req.getType() == Type.GET) {
         // model a random network/processing delay
         try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
         catch (InterruptedException e) { e.printStackTrace(); }
         System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReadOperation] ABORT GET REQUEST");
+        // iii. if the operation is a get, simply return the errot get response
         req.getClient().tell(new ClientMessage.GetResult(Result.ERROR, null), ActorRef.noSender());
       } else {
+        // iV. if it is a write operation, do:
 
+        // V. get the list of the responsible nodes
         Set<Integer> nodes = getResponsibleNode(msg.itemId);
 
+        // Vi. Check if the coordinator is one of the responsible nodes
         if(nodes.contains(this.key)){
+          // Vii. if the coordinator is one of the responsible nodes and the lock corresponds to the one requested, remove it
           Lock checkLock = this.locks.get(msg.itemId);
           if(checkLock != null && checkLock == msg.lock) {
             this.locks.remove(msg.itemId);
           }
         }
 
+        // Viii. Ask to the other nodes to release the requested lock
         for (int node : nodes) {
           if (node != this.key) {
             // model a random network/processing delay
@@ -1107,6 +1180,7 @@ public class Node extends AbstractActor {
         try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
         catch (InterruptedException e) { e.printStackTrace(); }
         System.out.println("["+this.getSelf().path().name()+"] [onTimeout_WriteOperation] ABORT UPDATE REQUEST");
+        // iX. return the error write operation response
         req.getClient().tell(new ClientMessage.UpdateResult(Result.ERROR, null), ActorRef.noSender());
       }
     }
@@ -1116,7 +1190,24 @@ public class Node extends AbstractActor {
 
   /*----------UPDATE----------*/
 
-  // Coordinator retrieve last version
+  //Update protocols works in this way:
+  // a. coordinator receive the request from the client and request to the N responsible nodes the actual last version of the item
+  // b. the responsible nodes return the last version of the item they own
+  // c. coordinator waits W replies, send the confirmation message to the client and request to the responsible nodes to update the item
+  // d. the responsible nodes update the item
+
+
+  // a. coordinator receive the request from the client and request to the N responsible nodes the actual last version of the item
+  
+  // Coordinator receive the update request from the client and perform the following protocol:
+  // i: check if the item is null (not already set), or if the lock is null or the lock is the same of the request it is performing; if one of the conditions matches:
+  // ii. set the new request and update the lock requested with the request counter
+  // iii. get the responsible nodes for the item
+  // iV. check if the coordinator is responsible for the item
+  // V. if the coordinator is responsible, get the lock, update the number of writing response and if the item is not null update the version
+  // Vi. check if the W quorum is reached
+  // Vii. if the quorum W is not reached, requested to the other responsible nodes
+  // Viii. If the quorum W is reached: increase the version, release the lock, remove the request, send the confirmation to the client and write the item
   private void onUpdateRequest(Message.UpdateRequest msg){
     Item item = new Item(msg.item);
     String clientName = msg.clientName;
@@ -1124,30 +1215,44 @@ public class Node extends AbstractActor {
 
     Lock lock = this.locks.get(item.getKey());
     Item itemNode = this.items.get(item.getKey());
-    Lock newLock = new Lock(clientName, this.key);
+    Lock newLock = new Lock(clientName, this.key, 0);
 
-    if(itemNode == null || lock == null || lock == newLock) {
+    // i: check if the item is null (not already set), or if the lock is null or the lock is the same of the request it is performing; if one of the conditions matches:
+    if(itemNode == null || lock == null || lock.equals(newLock)) {
+      // ii. set the new request and update the lock requested with the request counter
       counterRequest++;
+      newLock.setCounterRequest(counterRequest);
       Request req = new Request(this.getSender(), item, Type.UPDATE);
       this.requests.put(counterRequest, req);
 
-      ///se sono responsabile, aggiorno item, controllo se R = 1 (semmai invio risposta), in caso contrario eseguo codice sotto
+      // iii. get the responsible nodes for the item
       Set<Integer> respNodes = getResponsibleNode(item.getKey());
 
-      //Check if I am responsible for the node and no lock are active on the item
+      // iV. check if the coordinator is responsible for the item
       if (respNodes.contains(this.key)) {
+        // SEMMAI VERIFICARE QUI DI AVERE IL LOCK
+        // V. if the coordinator is responsible, get the lock, update the number of writing response and if the item is not null update the version
+        // Set the lock
         this.locks.put(item.getKey(), newLock);
         System.out.println("["+this.getSelf().path().name()+"] [onUpdate] Coordinator 1 item "+ item.getKey() + " lock-coordinator: " + this.key);
+        //Increase the responses relative to the update request
         req.setCounter(req.getCounter() + 1);
+
+        //Check if the item is already stored in the node
         if (this.items.get(item.getKey()) != null) {
+          //Update the version of the item with the one owned by the coordinator
           item.setVersion((this.items.get(item.getKey())).getVersion());
         }
       }
 
+      //Get the number of write replies
       int nW = req.getCounter();
 
+      // Vi. check if the W quorum is reached
       if (nW < this.W) {
+        // Vii. if the quorum W is not reached, requested to the other responsible nodes
         for (int node : respNodes) {
+          //Avoid to sent a useless message to itself
           if (node != this.key) {
             // model a random network/processing delay
             try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
@@ -1157,7 +1262,7 @@ public class Node extends AbstractActor {
           }
         }
 
-        //Timeout
+        //Set a timeout that will expires if not enough W replies arrives in time
         getContext().system().scheduler().scheduleOnce(
                 Duration.create(Main.T, TimeUnit.SECONDS),
                 this.getSelf(),
@@ -1165,20 +1270,29 @@ public class Node extends AbstractActor {
                 getContext().system().dispatcher(), this.getSelf()
         );
       } else if (nW == this.W) { // this should be only if W is 1
+        // Viii. If the quorum W is reached: increase the version, release the lock, remove the request, send the confirmation to the client and write the item
+        //Update the version to a new one
         item.setVersion(item.getVersion() + 1);
         Lock checkLock = this.locks.get(item.getKey());
-        if(checkLock != null && checkLock == new Lock(clientName,this.key)) {
+        //Check if the lock is the same you request
+        if(checkLock != null && checkLock.equals(newLock)) {
+          //release the lock
           this.locks.remove(item.getKey());
         }
+        //Remove the requests since it is satisfied (otherwise the timeout will expire
         this.requests.remove(counterRequest);
         // model a random network/processing delay
         try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
         catch (InterruptedException e) { e.printStackTrace(); }
+        //Send the result of the operation to the client
         req.getClient().tell(new ClientMessage.UpdateResult(Result.SUCCESS, item), ActorRef.noSender());
+        //Update the result
         this.items.put(item.getKey(), item);
         System.out.println("[" + this.getSelf().path().name() + "] [onDirectWriteInformation] Owner: lock: item " + item.getKey() +  " -> lock " + lock + " -> coordinator " + this.key);
       }
     } else {
+      // CHIEDERE A STEFANO: SERVE OPPURE E' DANNOSO PERCHE' ANCHE SE IL COORDINATORE HA IL LOCK POTREI CHIEDERE AGLI ALTRI?
+      //If the coordinator is not able to get the lock return the wrong result
       System.out.println("["+this.getSelf().path().name()+"] [onUpdate] Coordinator: Locked  item " + item.getKey() + " -> lock " + lock + " -> coordinator " + this.key);
       // model a random network/processing delay
       try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
@@ -1187,16 +1301,25 @@ public class Node extends AbstractActor {
     }
   }
 
-  //Return version of an item
+  // b. the responsible nodes return the last version of the item they own
+
+  //Manage the response to the request of the version from the coordinator
+  // i. check if no lock (or same lock) is set (if the condition is not matched no response)
+  // ii. get the lock
+  // iii. check if item is not null and if so get the version of the item stored
+  // iV. return the item with the actual version stored
   private void onVersion(Message.Version msg){
     Item item = new Item(msg.item);
     Lock lock = this.locks.get(item.getKey());
     Lock msg_lock = msg.lock;
-    if(lock == null || lock == msg_lock) {
+    // i. check if no lock (or same lock) is set (if the condition is not matched no response)
+    if(lock == null || lock.equals(msg_lock)) {
       System.out.println("[" + this.getSelf().path().name() + "] [onVersion] Owner lock: item key " + item.getKey() +  " -> lock " + lock + " -> coordinator: " + msg_lock + " (on node): -> " + this.key);
       Item itemNode = this.items.get(item.getKey());
+      // ii. get the lock
       this.locks.put(item.key, msg_lock);
 
+      // iii. check if item is not null and if so get the version of the item stored
       if (itemNode != null) {
         item.setVersion(itemNode.getVersion());
       }
@@ -1205,39 +1328,61 @@ public class Node extends AbstractActor {
       try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
       catch (InterruptedException e) { e.printStackTrace(); }
 
+      // iV. return the item with the actual version stored
       this.getSender().tell(new Message.UpdateVersion(msg_lock, msg.requestId, item), this.getSelf());
     } else {
+      //No response if the lock is not available
       System.out.println("[" + this.getSelf().path().name() + "] [onVersion] Owner: It's locked: item " + item.getKey() +  " -> lock " + lock +  " -> coordinator " + msg_lock + " (on node) " + this.key);
     }
   }
 
+  // c. coordinator waits W replies, send the confirmation message to the client and request to the responsible nodes to update the item
+
+  //Coordinator has to manage the response messages oof the version with this protocol:
+  // i. check if the request is yet there (no timeout expired)
+  // ii. Update the number of the responses relative to the write requested
+  // iii. Check if the quorum has been reached
+  // iV. if not, check only if the version of the item received is newer than the one stored, if so update the version of stored item
+  // V. if quorum is reached perform the following operation
+  // Vi. update the version of the item to a new one (the one stored is the last already there)
+  // Vii. remove the request (otherwise the timeout will expire)
+  // Viii. return the response to the client (with the new item updated)
+  // iV. Send the item to update to all the N nodes
   private void onUpdateVersion(Message.UpdateVersion msg){
     Item item = new Item(msg.item);
     System.out.println("["+this.getSelf().path().name()+"] [onUpdateVersion] Coordinator");
 
     Request req = this.requests.get(msg.requestId);
 
+    // i. check if the request is yet there (no timeout expired)
     if(req != null) {
+      // ii. Update the number of the responses relative to the write requested
       req.setCounter(req.getCounter() + 1);
       Item itemReq = req.getItem();
       int nW = req.getCounter();
 
-
+      // iii. Check if the quorum has been reached
       if(nW < this.W){
+        // iV. if not, check only if the version of the item received is newer than the one stored, if so update the version of stored item
         if(msg.item.getVersion() > itemReq.getVersion()){
           itemReq.setVersion(msg.item.getVersion());
         }
       } else if(nW == this.W) {
+        // v. if quorum is reached perform the following operation
+        // Vi. update the version of the item to a new one (the one stored is the last already there)
         itemReq.setVersion(itemReq.getVersion() + 1);
 
+        // Vii. remove the request (otherwise the timeout will expire)
         this.requests.remove(msg.requestId);
 
         // model a random network/processing delay
         try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
         catch (InterruptedException e) { e.printStackTrace(); }
 
+        // Viii. return the response to the client (with the new item updated)
         req.getClient().tell(new ClientMessage.UpdateResult(Result.SUCCESS, itemReq), ActorRef.noSender());
 
+        // iV. Send the item to update to all the N nodes
         for (int node : getResponsibleNode(item.getKey())) {
           // model a random network/processing delay
           try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
@@ -1249,13 +1394,21 @@ public class Node extends AbstractActor {
     }
   }
 
-  //Update item and send element to the coordinator
+  // d. the responsible nodes update the item
+
+  //Last message to write the updated item
+  // i. Check if the lock is the one requested
+  // ii. if the lock is the one requested remove it
+  // iii. Update the item
   private void onWrite(Message.Write msg){
     Item item = new Item(msg.item);
     Lock checkLock = this.locks.get(item.getKey());
-    if(checkLock != null && checkLock == msg.lock) {
+    // i. Check if the lock is the one requested
+    if(checkLock != null && checkLock.equals(msg.lock)) {
+      // ii. if the lock is the one requested remove it
       this.locks.remove(item.getKey());
     }
+    // iii. Update the item
     this.items.put(item.getKey(), item);
     System.out.println("["+this.getSelf().path().name()+"] [onWriteInformation] Owner: " + key + " ITEM: " + item);
   }
