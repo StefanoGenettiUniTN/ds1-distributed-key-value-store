@@ -76,7 +76,7 @@ public class Client extends AbstractActor {
       try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
       catch (InterruptedException e) { e.printStackTrace(); }
 
-      (msg.coordinator).tell(new Message.UpdateRequest(msg.item), this.getSelf());
+      (msg.coordinator).tell(new Message.UpdateRequest(this.getSelf().path().name(), msg.item), this.getSelf());
     } else{
       System.out.println("ERR: ongoing operations, item " + msg.item);
     }

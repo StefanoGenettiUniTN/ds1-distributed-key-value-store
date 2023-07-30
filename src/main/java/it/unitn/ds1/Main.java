@@ -11,6 +11,8 @@ public class Main {
   final static int R = 2; // read quorum
   final static int W = 2; // write quorum
   final static int T = 5; // timeout
+  final static int SLEEPTIMESHORT = 3000;
+  final static int SLEEPTIMEFULL = 2 * T * 1000;
 
   public static void main(String[] args) {
     if(R + W <= N || W <= N/2){
@@ -22,17 +24,26 @@ public class Main {
     final ActorSystem system = ActorSystem.create("ds1-project");
 
     // 1. Create node group
-
+    System.out.println("========================================");
+    System.out.println("Create Node n1 and join (first node in the ring); finally print the list of active node");
     //// create node n1
     ActorRef n1 = system.actorOf(Node.props(N, R, W, T),"n1");
 
     //// send init system to n1
     n1.tell(new Message.InitSystem(20), ActorRef.noSender());
 
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     n1.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    System.out.println("========================================\n\n");
+
+    System.out.println("========================================");
+    System.out.println("Create Node n2 and join; finally it prints the list of active node");
 
     //// create node n2
     ActorRef n2 = system.actorOf(Node.props(N, R, W, T),"n2");
@@ -40,16 +51,32 @@ public class Main {
     //// send to n2 the message to allow it joininig the network
     n2.tell(new Message.JoinMsg(30, n1), ActorRef.noSender());
 
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     n2.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
 
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    System.out.println("========================================\n\n");
+
+    System.out.println("========================================");
+    System.out.println("Node n2 crash");
+
     ///// node n2 crashes
     n2.tell(new Message.CrashMsg(), ActorRef.noSender());
 
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
+
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    System.out.println("========================================\n\n");
+
+    System.out.println("========================================");
+    System.out.println("Create Node n3 and join; finally n1 and n3 print the list of active node, n2 no since it is crashed");
 
     //// create node n3
     ActorRef n3 = system.actorOf(Node.props(N, R, W, T),"n3");
@@ -57,7 +84,7 @@ public class Main {
     //// send to n3 the message to allow it joining the network
     n3.tell(new Message.JoinMsg(40, n1), ActorRef.noSender());
 
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     n3.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
@@ -65,6 +92,35 @@ public class Main {
     n1.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
 
     n2.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    System.out.println("========================================\n\n");
+
+    System.out.println("========================================");
+    System.out.println("Try to insert a node with a key already present");
+
+    //// create node n3
+    ActorRef n32 = system.actorOf(Node.props(N, R, W, T),"n32");
+
+    //// send to n3 the message to allow it joining the network
+    n32.tell(new Message.JoinMsg(40, n1), ActorRef.noSender());
+
+    try { Thread.sleep(SLEEPTIMEFULL); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    n3.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+
+    n1.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+
+    n2.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
+
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    System.out.println("========================================\n\n");
+
+    System.out.println("========================================");
+    System.out.println("N2 recovery and prints active node list");
 
     //// node n2 recovery
     n2.tell(new Message.RecoveryMsg(n1), Actor.noSender());
@@ -74,111 +130,191 @@ public class Main {
 
     n2.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
 
-    //...end step 1
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    System.out.println("========================================\n\n");
+
+   //...end step 1
+
+    System.out.println("========================================");
+    System.out.println("Create three clients");
 
     // 2. Create client nodes and perform read and write operations
     ActorRef c1 = system.actorOf(Client.props(),"c1");
     ActorRef c2 = system.actorOf(Client.props(),"c2");
+    ActorRef c3 = system.actorOf(Client.props(),"c3");
+
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    System.out.println("========================================\n\n");
+
+    System.out.println("========================================");
+    System.out.println("Insert first items");
 
     // perform write operations
     c1.tell(new ClientMessage.Update(new Item(6, "VALUE6"), n1), ActorRef.noSender());
-    c1.tell(new ClientMessage.Update(new Item(7, "VALUE7"), n2), ActorRef.noSender());
-    c1.tell(new ClientMessage.Update(new Item(8, "VALUE8"), n3), ActorRef.noSender());
+    c2.tell(new ClientMessage.Update(new Item(7, "VALUE7"), n2), ActorRef.noSender());
+    c3.tell(new ClientMessage.Update(new Item(28, "VALUE28"), n3), ActorRef.noSender());
 
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
+
+    System.out.println("========================================\n\n");
+
+    System.out.println("========================================");
+    System.out.println("Insert other items");
 
     c1.tell(new ClientMessage.Update(new Item(15, "VALUE15"), n1), ActorRef.noSender());
+    c2.tell(new ClientMessage.Update(new Item(60, "VALUE60"), n2), ActorRef.noSender());
+    c3.tell(new ClientMessage.Update(new Item(25, "VALUE25"), n3), ActorRef.noSender());
 
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
-    c1.tell(new ClientMessage.Update(new Item(60, "VALUE60"), n2), ActorRef.noSender());
-    c2.tell(new ClientMessage.Update(new Item(25, "VALUE25"), n3), ActorRef.noSender());
-    c2.tell(new ClientMessage.Update(new Item(28, "VALUE28"), n1), ActorRef.noSender());
+    System.out.println("========================================\n\n");
 
-    try { Thread.sleep(2 * T * 1000); }
-    catch (InterruptedException e) { e.printStackTrace(); }
+    System.out.println("========================================");
+    System.out.println("Try to insert two insert other items from the same element, one of the two should fail");
 
-    c2.tell(new ClientMessage.Update(new Item(33, "VALUE33"), n2), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(33, "VALUE33"), n2), ActorRef.noSender());
     c1.tell(new ClientMessage.Update(new Item(49, "VALUE49"), n3), ActorRef.noSender());
 
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
+
+    System.out.println("========================================\n\n");
+
+    System.out.println("========================================");
+    System.out.println("Print list of items stored in each node");
+
+    n1.tell(new Message.PrintItemList(), ActorRef.noSender());
+    n2.tell(new Message.PrintItemList(), ActorRef.noSender());
+    n3.tell(new Message.PrintItemList(), ActorRef.noSender());
+
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    System.out.println("========================================\n\n");
+
+    System.out.println("========================================");
+    System.out.println("Read items 7, 15 and 33");
+
 
     // perform read operations
     c1.tell(new ClientMessage.Get(new Item(7, ""),n1), ActorRef.noSender());
-    c1.tell(new ClientMessage.Get(new Item(15, ""),n1), ActorRef.noSender());
-    c1.tell(new ClientMessage.Get(new Item(33, ""),n1), ActorRef.noSender());
+    c2.tell(new ClientMessage.Get(new Item(15, ""),n1), ActorRef.noSender());
+    c3.tell(new ClientMessage.Get(new Item(33, ""),n3), ActorRef.noSender());
 
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
-    System.out.println("LOCK TEST 1");
+    System.out.println("========================================\n\n");
+
+    System.out.println("========================================");
+    System.out.println("Read an unexisting item, a timeout is expected");
+
+
+    // perform read operations
+    c1.tell(new ClientMessage.Get(new Item(100, ""),n1), ActorRef.noSender());
+
+    try { Thread.sleep(SLEEPTIMEFULL); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    System.out.println("========================================\n\n");
+
+    System.out.println("========================================");
+    System.out.println("Lock Test 1: two clients try to update the same item with different coordinator: one or both should fail");
 
     // update item
-    c1.tell(new ClientMessage.Update(new Item(15, "VALUE15_updated"), n1), ActorRef.noSender());
-    c2.tell(new ClientMessage.Update(new Item(15, "CONFLICTING_15"), n3), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(15, "UPDATE_LOCK1_N1"), n1), ActorRef.noSender());
+    c2.tell(new ClientMessage.Update(new Item(15, "UPDATE_LOCK1_N3"), n3), ActorRef.noSender());
 
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
+
+    System.out.println("========================================\n\n");
+
+    System.out.println("========================================");
+    System.out.println("Read updated item (conflict case)");
 
     // read updated item
     c2.tell(new ClientMessage.Get(new Item(15, ""), n1), ActorRef.noSender());
 
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
-    System.out.println("LOCK TEST 2");
+    System.out.println("========================================\n\n");
+
+    System.out.println("========================================");
+    System.out.println("Lock Test 2: two clients try to update the same item with same coordinator: one or both should fail");
 
     // update item
-    c2.tell(new ClientMessage.Update(new Item(15, "CONFLICTING_15"), n3), ActorRef.noSender());
-    c1.tell(new ClientMessage.Update(new Item(15, "LAST VERSION"), n2), ActorRef.noSender());
+    c2.tell(new ClientMessage.Update(new Item(15, "UPDATE_LOCK2_N3_CL2"), n3), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(15, "UPDATE_LOCK2_N3_CL1"), n3), ActorRef.noSender());
 
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
+    System.out.println("========================================\n\n");
+
+    System.out.println("========================================");
+    System.out.println("Read updated item (conflict case)");
+
     // read updated item
-    c2.tell(new ClientMessage.Get(new Item(15, ""), n1), ActorRef.noSender());
-    c1.tell(new ClientMessage.Get(new Item(49, ""), n3), ActorRef.noSender());
+    c3.tell(new ClientMessage.Get(new Item(15, ""), n1), ActorRef.noSender());
+
+    try { Thread.sleep(SLEEPTIMEFULL); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Create and join node n4(key: 10)");
     //...end step 2
 
     // 3. Join
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     ActorRef n4 = system.actorOf(Node.props(N, R, W, T),"n4");
-    ActorRef n5 = system.actorOf(Node.props(N, R, W, T),"n5");
-
     n4.tell(new Message.JoinMsg(10, n1), ActorRef.noSender());
 
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Create and join node n5(key: 50)");
+
+    ActorRef n5 = system.actorOf(Node.props(N, R, W, T),"n5");
     n5.tell(new Message.JoinMsg(50, n3), ActorRef.noSender());    
     // ...end join
 
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
-    System.out.println("LOCK TEST 3");
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Lock Test 3: two clients try to update (item not present) the same item with different coordinator: one or both should fail");
 
-    c2.tell(new ClientMessage.Update(new Item(49, "CONFLICTING_49"), n1), ActorRef.noSender());
-    c1.tell(new ClientMessage.Update(new Item(49, "LAST VERSION 49"), n2), ActorRef.noSender());
+    c2.tell(new ClientMessage.Update(new Item(49, "UPDATE_49_N1"), n1), ActorRef.noSender());
+    c1.tell(new ClientMessage.Update(new Item(49, "UPDATE_49_N2"), n2), ActorRef.noSender());
 
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Get updated item (conflict case)");
 
     c2.tell(new ClientMessage.Get(new Item(49, ""), n3), ActorRef.noSender());
 
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     // print item set of the nodes
-    
-    try { Thread.sleep(2 * T * 1000); }
-    catch (InterruptedException e) { e.printStackTrace(); }
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Print item list of all nodes");
 
     n1.tell(new Message.PrintItemList(), ActorRef.noSender());
     n2.tell(new Message.PrintItemList(), ActorRef.noSender());
@@ -187,6 +323,14 @@ public class Main {
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
 
     // ...end print item set of the nodes
+    try { Thread.sleep(SLEEPTIMEFULL); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    // print item set of the nodes
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("NEXT TO DO");
+
 
     // leaving
     

@@ -19,7 +19,7 @@ public class Node extends AbstractActor {
   private final Map<Integer, ActorRef> peers;   // peers[K] points to the node in the group with key K
   private final Map<Integer, Item> items;       // the set of data item the node is currently responsible for
   private final Map<Integer, Request> requests; // lists of the requests
-  private final Map<Integer, Integer> locks;    // lock mapping used to manage concurrent write
+  private final Map<Integer, Lock> locks;    // lock mapping used to manage concurrent write
 
   private int key;  // node key
   private int counterRequest; // Number of request performed from the node as coordinator
@@ -103,7 +103,7 @@ public class Node extends AbstractActor {
       .match(Message.UpdateRequest.class, this::onUpdateRequest)
       .match(Message.UpdateVersion.class, this::onUpdateVersion)
       .match(Message.Write.class, this::onWrite)
-      .match(Message.ReleaseClock.class, this::onReleaseClock)
+      .match(Message.ReleaseLock.class, this::onReleaseLock)
       .match(Message.ReqDataItemsResponsibleFor.class, this::onReqDataItemsResponsibleFor)
       .match(Message.ReqDataItemsResponsibleFor_recovery.class, this::onReqDataItemsResponsibleFor_recovery)
       .match(Message.ResDataItemsResponsibleFor.class, this::onResDataItemsResponsibleFor)
@@ -219,35 +219,42 @@ public class Node extends AbstractActor {
     this.flag_reqActiveNodeList = true; // finally the ResActiveNodeList has been received, we can go on with the join operation without aborting
     System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList]");
 
-    // retrive message data and initialize the list of peers
-    for (Map.Entry<Integer, ActorRef> pair : msg.activeNodes.entrySet()) {
-      this.peers.put(pair.getKey(), pair.getValue());
+    if(!msg.activeNodes.containsKey(this.key)) {
+      // retrive message data and initialize the list of peers
+      for (Map.Entry<Integer, ActorRef> pair : msg.activeNodes.entrySet()) {
+        this.peers.put(pair.getKey(), pair.getValue());
+      }
+
+      // get clocwise neighbor which has to be queried to request data items
+      // the joining node is responsible for
+      ActorRef clockwiseNeighbor = this.getClockwiseNeighbor();
+      System.out.println("[" + this.getSelf().path().name() + "] [onResActiveNodeList] My clockwise neighbour is: " + clockwiseNeighbor);
+
+      // request data items the joining node is responsible for from its clockwise neighbor (which holds all items it needs)
+      this.flag_reqDataItemsResponsibleFor = false;
+      this.timeout_ReqDataItemsResponsibleFor_expired = false;
+      Message.ReqDataItemsResponsibleFor clockwiseNeighborRequest = new Message.ReqDataItemsResponsibleFor(this.key);
+
+      // model a random network/processing delay
+      try {
+        Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME * 100) * 10);
+      } catch (InterruptedException e) {
+        e.printStackTrace();
+      }
+      clockwiseNeighbor.tell(clockwiseNeighborRequest, this.getSelf());
+
+      // if the clocwise neighbour peer does not send a response before the timeout
+      // we abort the join operation
+      getContext().system().scheduler().scheduleOnce(
+              Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
+              this.getSelf(),                             // destination actor reference
+              new Message.Timeout_ReqDataItemsResponsibleFor(),   // the message to send,
+              getContext().system().dispatcher(),         // system dispatcher
+              this.getSelf()                              // source of the message (myself)
+      );
+    } else {
+      System.out.println("[" + this.getSelf().path().name() + "] [onResActiveNodeList] Node with the same key already there");
     }
-
-    // get clocwise neighbor which has to be queried to request data items 
-    // the joining node is responsible for
-    ActorRef clockwiseNeighbor = this.getClockwiseNeighbor();
-    System.out.println("["+this.getSelf().path().name()+"] [onResActiveNodeList] My clockwise neighbour is: "+clockwiseNeighbor);
-
-    // request data items the joining node is responsible for from its clockwise neighbor (which holds all items it needs)
-    this.flag_reqDataItemsResponsibleFor = false;
-    this.timeout_ReqDataItemsResponsibleFor_expired = false;
-    Message.ReqDataItemsResponsibleFor clockwiseNeighborRequest = new Message.ReqDataItemsResponsibleFor(this.key);
-
-    // model a random network/processing delay
-    try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
-    catch (InterruptedException e) { e.printStackTrace(); }
-    clockwiseNeighbor.tell(clockwiseNeighborRequest, this.getSelf());
-
-    // if the clocwise neighbour peer does not send a response before the timeout
-    // we abort the join operation
-    getContext().system().scheduler().scheduleOnce(
-      Duration.create(this.T, TimeUnit.SECONDS),  // timeout interval
-      this.getSelf(),                             // destination actor reference
-      new Message.Timeout_ReqDataItemsResponsibleFor(),   // the message to send,
-      getContext().system().dispatcher(),         // system dispatcher
-      this.getSelf()                              // source of the message (myself)
-    );
   }
 
   // the clockwise neighbour node is not sending a response
@@ -978,7 +985,7 @@ public class Node extends AbstractActor {
     Set<Integer> respNodes = getResponsibleNode(item.getKey());
 
     if(respNodes.contains(this.key)){
-      if(this.items.containsKey(item.getKey())) {
+      if(this.items.containsKey(item.getKey()) && this.locks.get(item.getKey()) == null) {
         req.setCounter(req.getCounter() + 1);
         item.setVersion(msg.item.getVersion());
         item.setValue(msg.item.getValue());
@@ -1001,7 +1008,7 @@ public class Node extends AbstractActor {
       getContext().system().scheduler().scheduleOnce(
               Duration.create(Main.T, TimeUnit.SECONDS),
               this.getSelf(),
-              new Message.Timeout(counterRequest, this.key, item.getKey()), // the message to send,
+              new Message.Timeout(null, counterRequest, item.getKey()), // the message to send,
               getContext().system().dispatcher(), this.getSelf()
       );
     } else if (nR == this.R){ // this should happen only if R is set to 1
@@ -1017,7 +1024,7 @@ public class Node extends AbstractActor {
   //Return information of an item to the coordinator
   private void onRead(Message.Read msg){
     Item item = this.items.get(msg.item.getKey());
-    Integer checkLock = this.locks.get(msg.item.getKey());
+    Lock checkLock = this.locks.get(msg.item.getKey());
     if(checkLock == null && item != null) {
       System.out.println("[" + this.getSelf().path().name() + "] [onRead] Owner: " + key + " ITEM: " + item);
       // model a random network/processing delay
@@ -1057,9 +1064,9 @@ public class Node extends AbstractActor {
 
   /*----------END GET----------*/
 
-  private void onReleaseClock(Message.ReleaseClock msg){
-    Integer lock = this.locks.get(msg.itemId);
-    if(lock != null && lock == msg.coordinatorId){
+  private void onReleaseLock(Message.ReleaseLock msg){
+    Lock lock = this.locks.get(msg.itemId);
+    if(lock != null && lock == msg.lock){
       this.locks.remove(msg.itemId);
     }
   }
@@ -1079,8 +1086,8 @@ public class Node extends AbstractActor {
         Set<Integer> nodes = getResponsibleNode(msg.itemId);
 
         if(nodes.contains(this.key)){
-          Integer checkLock = this.locks.get(msg.itemId);
-          if(checkLock != null && checkLock == this.key) {
+          Lock checkLock = this.locks.get(msg.itemId);
+          if(checkLock != null && checkLock == msg.lock) {
             this.locks.remove(msg.itemId);
           }
         }
@@ -1091,7 +1098,7 @@ public class Node extends AbstractActor {
             try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
             catch (InterruptedException e) { e.printStackTrace(); }
 
-            (peers.get(node)).tell(new Message.ReleaseClock(msg.itemId, msg.coordinatorId), this.getSelf());
+            (peers.get(node)).tell(new Message.ReleaseLock(msg.lock, msg.itemId), this.getSelf());
           }
         }
 
@@ -1111,12 +1118,14 @@ public class Node extends AbstractActor {
   // Coordinator retrieve last version
   private void onUpdateRequest(Message.UpdateRequest msg){
     Item item = new Item(msg.item);
+    String clientName = msg.clientName;
     System.out.println("["+this.getSelf().path().name()+"] [onUpdate] Coordinator");
 
-    Integer lock = this.locks.get(item.getKey());
+    Lock lock = this.locks.get(item.getKey());
     Item itemNode = this.items.get(item.getKey());
+    Lock newLock = new Lock(clientName, this.key);
 
-    if(itemNode == null || lock == null || (lock != null && (lock == -1 || lock == this.key))) {
+    if(itemNode == null || lock == null || lock == newLock) {
       counterRequest++;
       Request req = new Request(this.getSender(), item, Type.UPDATE);
       this.requests.put(counterRequest, req);
@@ -1126,7 +1135,7 @@ public class Node extends AbstractActor {
 
       //Check if I am responsible for the node and no lock are active on the item
       if (respNodes.contains(this.key)) {
-        this.locks.put(item.getKey(), this.key);
+        this.locks.put(item.getKey(), newLock);
         System.out.println("["+this.getSelf().path().name()+"] [onUpdate] Coordinator 1 item "+ item.getKey() + " lock-coordinator: " + this.key);
         req.setCounter(req.getCounter() + 1);
         if (this.items.get(item.getKey()) != null) {
@@ -1143,7 +1152,7 @@ public class Node extends AbstractActor {
             try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
             catch (InterruptedException e) { e.printStackTrace(); }
 
-            (peers.get(node)).tell(new Message.Version(this.key, counterRequest, item), this.getSelf());
+            (peers.get(node)).tell(new Message.Version(newLock, counterRequest, item), this.getSelf());
           }
         }
 
@@ -1151,13 +1160,13 @@ public class Node extends AbstractActor {
         getContext().system().scheduler().scheduleOnce(
                 Duration.create(Main.T, TimeUnit.SECONDS),
                 this.getSelf(),
-                new Message.Timeout(counterRequest, this.key, item.getKey()), // the message to send,
+                new Message.Timeout(newLock, counterRequest, item.getKey()), // the message to send,
                 getContext().system().dispatcher(), this.getSelf()
         );
       } else if (nW == this.W) { // this should be only if W is 1
         item.setVersion(item.getVersion() + 1);
-        Integer checkLock = this.locks.get(item.getKey());
-        if(checkLock != null && checkLock == this.key) {
+        Lock checkLock = this.locks.get(item.getKey());
+        if(checkLock != null && checkLock == new Lock(clientName,this.key)) {
           this.locks.remove(item.getKey());
         }
         this.requests.remove(counterRequest);
@@ -1180,11 +1189,12 @@ public class Node extends AbstractActor {
   //Return version of an item
   private void onVersion(Message.Version msg){
     Item item = new Item(msg.item);
-    Integer lock = this.locks.get(item.getKey());
-    if(lock == null || (lock != null && (lock == -1 || lock == msg.coordinatorId))) {
-      System.out.println("[" + this.getSelf().path().name() + "] [onVersion] Owner lock: item key " + item.getKey() +  " -> lock " + lock + " -> coordinator: " + msg.coordinatorId + " (on node): -> " + this.key);
+    Lock lock = this.locks.get(item.getKey());
+    Lock msg_lock = msg.lock;
+    if(lock == null || lock == msg_lock) {
+      System.out.println("[" + this.getSelf().path().name() + "] [onVersion] Owner lock: item key " + item.getKey() +  " -> lock " + lock + " -> coordinator: " + msg_lock + " (on node): -> " + this.key);
       Item itemNode = this.items.get(item.getKey());
-      this.locks.put(item.key, msg.coordinatorId);
+      this.locks.put(item.key, msg_lock);
 
       if (itemNode != null) {
         item.setVersion(itemNode.getVersion());
@@ -1194,9 +1204,9 @@ public class Node extends AbstractActor {
       try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
       catch (InterruptedException e) { e.printStackTrace(); }
 
-      this.getSender().tell(new Message.UpdateVersion(msg.requestId, item), this.getSelf());
+      this.getSender().tell(new Message.UpdateVersion(msg_lock, msg.requestId, item), this.getSelf());
     } else {
-      System.out.println("[" + this.getSelf().path().name() + "] [onVersion] Owner: It's locked: item " + item.getKey() +  " -> lock " + lock +  " -> coordinator " + msg.coordinatorId + " (on node) " + this.key);
+      System.out.println("[" + this.getSelf().path().name() + "] [onVersion] Owner: It's locked: item " + item.getKey() +  " -> lock " + lock +  " -> coordinator " + msg_lock + " (on node) " + this.key);
     }
   }
 
@@ -1232,7 +1242,7 @@ public class Node extends AbstractActor {
           try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
           catch (InterruptedException e) { e.printStackTrace(); }
 
-          (peers.get(node)).tell(new Message.Write(this.key, itemReq), this.getSelf());
+          (peers.get(node)).tell(new Message.Write(msg.lock, itemReq), this.getSelf());
         }
       }
     }
@@ -1241,8 +1251,8 @@ public class Node extends AbstractActor {
   //Update item and send element to the coordinator
   private void onWrite(Message.Write msg){
     Item item = new Item(msg.item);
-    Integer checkLock = this.locks.get(item.getKey());
-    if(checkLock != null && checkLock == msg.coordinatorId) {
+    Lock checkLock = this.locks.get(item.getKey());
+    if(checkLock != null && checkLock == msg.lock) {
       this.locks.remove(item.getKey());
     }
     this.items.put(item.getKey(), item);

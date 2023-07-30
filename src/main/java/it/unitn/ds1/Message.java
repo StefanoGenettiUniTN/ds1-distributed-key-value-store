@@ -148,21 +148,21 @@ public class Message{
     // This class represents a timeoutExpiration
     public static class Timeout implements Serializable {
         public final int requestId;
-        public final int coordinatorId;
+        public final Lock lock;
         public final int itemId;
-        public Timeout(int requestId, int coordinatorId, int itemId) {
+        public Timeout(Lock lock, int requestId, int itemId) {
             this.requestId = requestId;
-            this.coordinatorId = coordinatorId;
+            this.lock = lock;
             this.itemId = itemId;
         }
     }
 
     // This class represents a message to release clocks
-    public static class ReleaseClock implements Serializable {
-        public final int coordinatorId;
+    public static class ReleaseLock implements Serializable {
+        public final Lock lock;
         public final int itemId;
-        public ReleaseClock(int itemId, int coordinatorId) {
-            this.coordinatorId = coordinatorId;
+        public ReleaseLock(Lock lock, int itemId) {
+            this.lock = lock;
             this.itemId = itemId;
         }
     }
@@ -221,22 +221,24 @@ public class Message{
         }
     }
 
-    // This class represents a message to get the version of an item
-    public static class Version implements Serializable {
-        public final int coordinatorId;
-        public final int requestId;
+    // This class represents a message to update an item
+    public static class UpdateRequest implements Serializable {
+        public final String clientName;
         public final Item item;
-        public Version(int coordinatorId, int requestId, Item item) {
-            this.coordinatorId = coordinatorId;
-            this.requestId = requestId;
+        public UpdateRequest(String clientName, Item item) {
+            this.clientName = clientName;
             this.item = item;
         }
     }
 
-    // This class represents a message to update an item
-    public static class UpdateRequest implements Serializable {
+    // This class represents a message to get the version of an item
+    public static class Version implements Serializable {
+        public final Lock lock;
+        public final int requestId;
         public final Item item;
-        public UpdateRequest(Item item) {
+        public Version(Lock lock, int requestId, Item item) {
+            this.lock = lock;
+            this.requestId = requestId;
             this.item = item;
         }
     }
@@ -244,8 +246,10 @@ public class Message{
     // this class represents all the information to update an item
     public static class UpdateVersion implements Serializable {
         public final int requestId;
+        public final Lock lock;
         public final Item item;
-        public UpdateVersion(int requestId, Item item) {
+        public UpdateVersion(Lock lock, int requestId, Item item) {
+            this.lock = lock;
             this.requestId = requestId;
             this.item = item;
         }
@@ -253,10 +257,10 @@ public class Message{
 
     // This class represents a message to write the new item
     public static class Write implements Serializable {
-        public final int coordinatorId;
+        public final Lock lock;
         public final Item item;
-        public Write(int coordinatorId, Item item) {
-            this.coordinatorId = coordinatorId;
+        public Write(Lock lock, Item item) {
+            this.lock = lock;
             this.item = item;
         }
     }
