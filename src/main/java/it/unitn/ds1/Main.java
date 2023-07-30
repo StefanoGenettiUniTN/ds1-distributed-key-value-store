@@ -25,7 +25,7 @@ public class Main {
 
     // 1. Create node group
     System.out.println("========================================");
-    System.out.println("Create Node n1 and join (first node in the ring); finally print the list of active node");
+    System.out.println("Create Node n1(key:20) and join (first node in the ring); finally print the list of active node");
     //// create node n1
     ActorRef n1 = system.actorOf(Node.props(N, R, W, T),"n1");
 
@@ -43,7 +43,7 @@ public class Main {
     System.out.println("========================================\n\n");
 
     System.out.println("========================================");
-    System.out.println("Create Node n2 and join; finally it prints the list of active node");
+    System.out.println("Create Node n2(key:30) and join; finally it prints the list of active node");
 
     //// create node n2
     ActorRef n2 = system.actorOf(Node.props(N, R, W, T),"n2");
@@ -76,7 +76,7 @@ public class Main {
     System.out.println("========================================\n\n");
 
     System.out.println("========================================");
-    System.out.println("Create Node n3 and join; finally n1 and n3 print the list of active node, n2 no since it is crashed");
+    System.out.println("Create Node n3(key:40) and join; finally n1 and n3 print the list of active node, n2 no since it is crashed");
 
     //// create node n3
     ActorRef n3 = system.actorOf(Node.props(N, R, W, T),"n3");
@@ -98,7 +98,7 @@ public class Main {
     System.out.println("========================================\n\n");
 
     System.out.println("========================================");
-    System.out.println("Try to insert a node with a key already present");
+    System.out.println("Try to insert a node with a key (40) already present");
 
     //// create node n3
     ActorRef n32 = system.actorOf(Node.props(N, R, W, T),"n32");
@@ -323,91 +323,141 @@ public class Main {
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
 
     // ...end print item set of the nodes
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    // print item set of the nodes
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Node1 (key:20) leaving");
+
+    //// leave n1
+    n1.tell(new Message.LeaveMsg(), ActorRef.noSender());
+
+    // print item set of the nodes
     try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
     // print item set of the nodes
     System.out.println("========================================\n\n");
     System.out.println("========================================");
-    System.out.println("NEXT TO DO");
+    System.out.println("Print item of each node after node1 leaves");
 
-
-    // leaving
-    
-    try { Thread.sleep(2 * T * 1000); }
-    catch (InterruptedException e) { e.printStackTrace(); }
-
-    //// leave n1
-    n1.tell(new Message.LeaveMsg(), ActorRef.noSender());
-
-    // print item set of the nodes
-    try { Thread.sleep(2 * T * 1000); }
-    catch (InterruptedException e) { e.printStackTrace(); }
     n2.tell(new Message.PrintItemList(), ActorRef.noSender());
     n3.tell(new Message.PrintItemList(), ActorRef.noSender());
     n4.tell(new Message.PrintItemList(), ActorRef.noSender());
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
+
     // ...end print item set of the nodes
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    // print item set of the nodes
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Node2 (key:30) leaving");
 
     //// leave n2
     n2.tell(new Message.LeaveMsg(), ActorRef.noSender());
 
     // print item set of the nodes
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
+
+    // print item set of the nodes
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Print item of each node after node2 leaves");
+
     n3.tell(new Message.PrintItemList(), ActorRef.noSender());
     n4.tell(new Message.PrintItemList(), ActorRef.noSender());
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
     // ...end print item set of the nodes
 
+    // ...end print item set of the nodes
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    // print item set of the nodes
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Node3 (key:40) leaving");
     //// leave n3
     n3.tell(new Message.LeaveMsg(), ActorRef.noSender());
 
     // print item set of the nodes
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
+
+    // print item set of the nodes
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Print item of each node after node2 leaves");
+
     n4.tell(new Message.PrintItemList(), ActorRef.noSender());
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
     // ...end print item set of the nodes
 
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    // print item set of the nodes
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Node4 (key:10) leaving");
     //// leave n4
     n4.tell(new Message.LeaveMsg(), ActorRef.noSender());
 
     // print item set of the nodes
-    try { Thread.sleep(2 * T * 1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
+
+    // print item set of the nodes
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Print item of each node after node4 leaves");
+
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
     // ...end print item set of the nodes
+
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
 
     // ... end leaving
 
     // test crash and recovery
 
-    try { Thread.sleep(2000); }
-    catch (InterruptedException e) { e.printStackTrace(); }
-
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Create node6 (key:40) and join");
     //// create node n6
     ActorRef n6 = system.actorOf(Node.props(N, R, W, T),"n6");
-
     //// send to n6 the message to allow it joininig the network
     n6.tell(new Message.JoinMsg(40, n5), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Node6 prints the node list");
     n6.tell(new Message.PrintNodeList(), ActorRef.noSender());  // ask to print the current list of peers
     
     // print item set of the nodes
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(SLEEPTIMESHORT); }
     catch (InterruptedException e) { e.printStackTrace(); }
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Node5 and 6 print the ITEM list");
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
-    // ...end print item set of the nodes
-
-    // print item set of the nodes
-    try { Thread.sleep(1000); }
-    catch (InterruptedException e) { e.printStackTrace(); }
     n6.tell(new Message.PrintItemList(), ActorRef.noSender());
     // ...end print item set of the nodes
+
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Create node7 (key:65) and join");
 
     //// create node n7
     ActorRef n7 = system.actorOf(Node.props(N, R, W, T),"n7");
@@ -415,62 +465,69 @@ public class Main {
     //// send to n7 the message to allow it joininig the network
     n7.tell(new Message.JoinMsg(65, n5), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
 
-    // print item set of the nodes
-    try { Thread.sleep(1000); }
-    catch (InterruptedException e) { e.printStackTrace(); }
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Node5 and node7 prints the ITEM list");
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
-    // ...end print item set of the nodes
-
-    // print item set of the nodes
-    try { Thread.sleep(1000); }
-    catch (InterruptedException e) { e.printStackTrace(); }
     n7.tell(new Message.PrintItemList(), ActorRef.noSender());
     // ...end print item set of the nodes
 
     ///// node n6 crashes
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Node6 crashes");
     n6.tell(new Message.CrashMsg(), ActorRef.noSender());
 
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(SLEEPTIMESHORT); }
     catch (InterruptedException e) { e.printStackTrace(); }
-
-    // print item set of the nodes
-    try { Thread.sleep(1000); }
-    catch (InterruptedException e) { e.printStackTrace(); }
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Node5 prints the ITEM list");
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
     // ...end print item set of the nodes
 
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Update and insert other elements");
     // write new items
     c1.tell(new ClientMessage.Update(new Item(39, "VALUE39"), n5), ActorRef.noSender());
-    c1.tell(new ClientMessage.Update(new Item(48, "VALUE48"), n5), ActorRef.noSender());
-    c1.tell(new ClientMessage.Update(new Item(64, "VALUE48"), n5), ActorRef.noSender());
+    c2.tell(new ClientMessage.Update(new Item(48, "VALUE48"), n5), ActorRef.noSender());
+    c3.tell(new ClientMessage.Update(new Item(64, "VALUE64"), n5), ActorRef.noSender());
 
     //// node n6 recovery
-    try { Thread.sleep(3000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Node6 recovery");
     n6.tell(new Message.RecoveryMsg(n5), Actor.noSender());
 
     // print item set of the nodes
-    try { Thread.sleep(1000); }
+    try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("Node5, Node6 and Node7 print item list");
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
-    // ...end print item set of the nodes
-
-    // print item set of the nodes
-    try { Thread.sleep(1000); }
-    catch (InterruptedException e) { e.printStackTrace(); }
     n6.tell(new Message.PrintItemList(), ActorRef.noSender());
-    // ...end print item set of the nodes
-
-    // print item set of the nodes
-    try { Thread.sleep(1000); }
-    catch (InterruptedException e) { e.printStackTrace(); }
     n7.tell(new Message.PrintItemList(), ActorRef.noSender());
     // ...end print item set of the nodes
 
     // ... end test crash and recovery
+
+    // print item set of the nodes
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+    System.out.println("========================================\n\n");
+    System.out.println("========================================");
+    System.out.println("NEXT TO DO");
 
     // test timeout reqActiveNodeList
 
