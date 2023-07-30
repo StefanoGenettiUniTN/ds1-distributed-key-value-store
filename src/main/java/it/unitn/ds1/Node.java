@@ -347,7 +347,7 @@ public class Node extends AbstractActor {
       //---
     }
 
-    System.out.println("join_update_item_response_counter = "+join_update_item_response_counter);
+    //System.out.println("join_update_item_response_counter = "+join_update_item_response_counter);
 
     // in the case this.join_update_item_response_counter is empty then it is not necessary to perform any read operation
     // and the node can immediately announce its presence to every node in the system
@@ -1080,6 +1080,7 @@ public class Node extends AbstractActor {
         // model a random network/processing delay
         try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
         catch (InterruptedException e) { e.printStackTrace(); }
+        System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReadOperation] ABORT GET REQUEST");
         req.getClient().tell(new ClientMessage.GetResult(Result.ERROR, null), ActorRef.noSender());
       } else {
 
@@ -1105,7 +1106,7 @@ public class Node extends AbstractActor {
         // model a random network/processing delay
         try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
         catch (InterruptedException e) { e.printStackTrace(); }
-
+        System.out.println("["+this.getSelf().path().name()+"] [onTimeout_WriteOperation] ABORT UPDATE REQUEST");
         req.getClient().tell(new ClientMessage.UpdateResult(Result.ERROR, null), ActorRef.noSender());
       }
     }
@@ -1263,8 +1264,7 @@ public class Node extends AbstractActor {
 
   // Print the list of nodes
   private void onPrintNodeList(Message.PrintNodeList msg){
-    System.out.println("["+this.getSelf().path().name()+"] [onPrintNodeList]");
-    System.out.println(this.peers);
+    System.out.println("["+this.getSelf().path().name()+"] [onPrintNodeList] Node: " + key + " " + this.peers);
   }
 
   // Print the list of Item
