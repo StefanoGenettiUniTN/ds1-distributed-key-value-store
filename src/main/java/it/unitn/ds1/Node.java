@@ -1061,9 +1061,8 @@ public class Node extends AbstractActor {
   // ii. return the item stored
   private void onRead(Message.Read msg){
     Item item = this.items.get(msg.item.getKey());
-    String lock = this.locks.get(msg.item.getKey());
     // i. firstly check if a lock is not set (not writing operation ongoing) and if the item is not null (item stored)
-    if(lock == null && item != null) {
+    if(this.locks.containsKey(msg.item.getKey()) == false && item != null) {
       System.out.println("[" + this.getSelf().path().name() + "] [onRead] Owner: " + key + " ITEM: " + item);
       // model a random network/processing delay
       try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
@@ -1200,10 +1199,10 @@ public class Node extends AbstractActor {
   // a. coordinator receive the request from the client and request to the N responsible nodes the actual last version of the item
   
   // Coordinator receive the update request from the client and perform the following protocol:
-  // i: check if the item is null (not already set), or if the lock is null or the lock is the same of the request it is performing; if one of the conditions matches:
-  // ii. set the new request and update the lock requested with the request counter
-  // iii. get the responsible nodes for the item
-  // iV. check if the coordinator is responsible for the item
+  // i. set the new request and update the lock requested with the request counter
+  // ii. get the responsible nodes for the item
+  // iii. check if the coordinator is responsible for the item
+  // iV. check if no lock is set
   // V. if the coordinator is responsible, get the lock, update the number of writing response and if the item is not null update the version
   // Vi. check if the W quorum is reached
   // Vii. if the quorum W is not reached, requested to the other responsible nodes
@@ -1227,9 +1226,9 @@ public class Node extends AbstractActor {
 
     // iii. check if the coordinator is responsible for the item
     if (respNodes.contains(this.key)) {
-      // SEMMAI VERIFICARE QUI DI AVERE IL LOCK
+      // iV. check if no lock is set
       if(this.locks.containsKey(item.getKey()) == false) {
-        // iV. if the coordinator is responsible, get the lock, update the number of writing response and if the item is not null update the version
+        // V. if the coordinator is responsible, get the lock, update the number of writing response and if the item is not null update the version
         // Set the lock
         this.locks.put(item.getKey(), msg.clientName);
         System.out.println("[" + this.getSelf().path().name() + "] [onUpdate] Coordinator 1 item " + item.getKey() + " lock-client: " + clientName);
