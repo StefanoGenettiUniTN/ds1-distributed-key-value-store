@@ -147,11 +147,9 @@ public class Message{
 
     // This class represents a timeoutExpiration for get or update operation
     public static class Timeout implements Serializable {
-        public final int requestId;
         public final String clientName;
         public final int itemId;
-        public Timeout(String clientName, int requestId, int itemId) {
-            this.requestId = requestId;
+        public Timeout(String clientName, int itemId) {
             this.clientName = clientName;
             this.itemId = itemId;
         }
@@ -203,20 +201,20 @@ public class Message{
 
     // This class represents a message to request the owner of an item to return the version it owns
     public static class Read implements Serializable {
-        public final int requestId;
+        public final String clientName;
         public final Item item;
-        public Read(int requestId, Item item) {
-            this.requestId = requestId;
+        public Read(String clientName, Item item) {
+            this.clientName = clientName;
             this.item = item;
         }
     }
 
     //This class represents a message with all the information of an item that the node owns
     public static class ReadItemInformation implements Serializable {
-        public final int requestId;
+        public final String clientName;
         public final Item item;
-        public ReadItemInformation(int requestId, Item item) {
-            this.requestId = requestId;
+        public ReadItemInformation(String clientName, Item item) {
+            this.clientName = clientName;
             this.item = item;
         }
     }
@@ -236,23 +234,19 @@ public class Message{
     // This class represents a message to request the version of the item that has to be updated
     public static class Version implements Serializable {
         public final String clientName;
-        public final int requestId;
         public final Item item;
-        public Version(String clientName, int requestId, Item item) {
+        public Version(String clientName, Item item) {
             this.clientName = clientName;
-            this.requestId = requestId;
             this.item = item;
         }
     }
 
     // This class represents a message that returns the version of the item
     public static class UpdateVersion implements Serializable {
-        public final int requestId;
         public final String clientName;
         public final Item item;
-        public UpdateVersion(String clientName, int requestId, Item item) {
+        public UpdateVersion(String clientName, Item item) {
             this.clientName = clientName;
-            this.requestId = requestId;
             this.item = item;
         }
     }

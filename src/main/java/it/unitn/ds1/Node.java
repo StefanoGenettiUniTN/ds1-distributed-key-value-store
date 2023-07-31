@@ -18,11 +18,10 @@ public class Node extends AbstractActor {
   private final Random rnd;
   private final Map<Integer, ActorRef> peers;   // peers[K] points to the node in the group with key K
   private final Map<Integer, Item> items;       // the set of data item the node is currently responsible for
-  private final Map<Integer, Request> requests; // lists of the requests
+  private final Map<String, Request> requests; // lists of the requests
   private final Map<Integer, String> locks;    // lock mapping used to manage concurrent write
 
   private int key;  // node key
-  private int counterRequest; // Number of request performed from the node as coordinator
 
   //----FLAGS----
   private Map<Integer, Integer> join_update_item_response_counter;  // the joining node performs read operations to ensure that its items are up to date.
@@ -61,7 +60,6 @@ public class Node extends AbstractActor {
     this.items = new HashMap<>();
     this.requests = new HashMap<>();
     this.locks = new HashMap<>();
-    this.counterRequest = 0;
 
     this.join_update_item_response_counter = new HashMap<>();
     this.flag_ignore_further_read_update = false;
@@ -79,7 +77,7 @@ public class Node extends AbstractActor {
 
   @Override
   public void preStart() {
-    System.out.println("["+this.getSelf().path().name()+"] [preStart] Node key: "+this.key);
+    System.out.println("["+this.getSelf().path().name()+"] [preStart]");
   }
 
   static public Props props(int n, int r, int w, int t) {
@@ -144,7 +142,7 @@ public class Node extends AbstractActor {
   // First node in the network receives this message and
   // initializes the system adding itself to the group
   private void onInit(Message.InitSystem msg){  // TODO: aggiungere InitSystem message alla documentazione
-    System.out.println("["+this.getSelf().path().name()+"] [InitSystem] Node key: "+this.key);
+    System.out.println("["+this.getSelf().path().name()+"] [InitSystem] ");
     this.key = msg.key;
     this.peers.put(this.key, this.getSelf());
   }
@@ -989,7 +987,7 @@ public class Node extends AbstractActor {
   //a. the coordinator receive the request from the client and contact the N responsible nodes for reading the item
 
   // This is the request from the client to the node coordinator for the operation. This operation will be executed in this order:
-  // i. set a new counterrequest for the request
+  // i. set a new request
   // ii. get the responsible nodes for the item provided
   // iii. if the coordinator is one of the responsible nodes it will read it
   // iV. check if the quorum R is reached
@@ -997,12 +995,12 @@ public class Node extends AbstractActor {
   // VI. if it is reached return the response and delete the request
   private void onGetRequest(Message.GetRequest msg){
     Item item =  new Item(msg.item);
-    System.out.println("["+this.getSelf().path().name()+"] [onGet] Coordinator");
+    String clientName = this.getSelf().path().name();
+    System.out.println("["+clientName+"] [onGet] Coordinator");
 
-    // i. set a new counterrequest for the request
-    counterRequest++;
-    Request req = new Request(this.getSender(), new Item(key, ""), Type.GET);
-    this.requests.put(counterRequest, req);
+    // i. set a new request
+    Request req = new Request(this.getSender(), new Item(key, ""), Type.GET, clientName);
+    this.requests.put(clientName, req);
 
     // ii. get the responsible nodes for the item provided
     Set<Integer> respNodes = getResponsibleNode(item.getKey());
@@ -1013,13 +1011,13 @@ public class Node extends AbstractActor {
       // if no lock is set, the coordinator can read the item
       // if it is set, the coordinator cannot read the item since a write operation is ongoing and version problems could arise
       if(this.items.containsKey(item.getKey()) && this.locks.get(item.getKey()) == null) {
-        req.setCounter(req.getCounter() + 1);
+        req.setOperationCounter(req.getOperationCounter() + 1);
         item.setVersion(msg.item.getVersion());
         item.setValue(msg.item.getValue());
       }
     }
 
-    int nR = req.getCounter();
+    int nR = req.getOperationCounter();
 
     // iV. check if the quorum R is reached
     if(nR < this.R) {
@@ -1030,7 +1028,7 @@ public class Node extends AbstractActor {
           // model a random network/processing delay
           try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
           catch (InterruptedException e) { e.printStackTrace(); }
-          (peers.get(node)).tell(new Message.Read(counterRequest, item), this.getSelf());
+          (peers.get(node)).tell(new Message.Read(clientName, item), this.getSelf());
         }
       }
 
@@ -1038,13 +1036,13 @@ public class Node extends AbstractActor {
       getContext().system().scheduler().scheduleOnce(
               Duration.create(Main.T, TimeUnit.SECONDS),
               this.getSelf(),
-              new Message.Timeout(null, counterRequest, item.getKey()), // the message to send,
+              new Message.Timeout(clientName, item.getKey()), // the message to send,
               getContext().system().dispatcher(), this.getSelf()
       );
     } else if (nR == this.R){ // this should happen only if R is set to 1
       System.out.println("["+this.getSelf().path().name()+"] [onDirectReadItemInformation] Owner");
       //Remove the request from the array
-      this.requests.remove(counterRequest);
+      this.requests.remove(clientName);
       // model a random network/processing delay
       try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
       catch (InterruptedException e) { e.printStackTrace(); }
@@ -1068,7 +1066,7 @@ public class Node extends AbstractActor {
       try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
       catch (InterruptedException e) { e.printStackTrace(); }
       // ii. return the item stored
-      this.getSender().tell(new Message.ReadItemInformation(msg.requestId, item), ActorRef.noSender());
+      this.getSender().tell(new Message.ReadItemInformation(msg.clientName, item), ActorRef.noSender());
     }
   }
 
@@ -1084,13 +1082,13 @@ public class Node extends AbstractActor {
   private void onReadItemInformation(Message.ReadItemInformation msg){
     System.out.println("["+this.getSelf().path().name()+"] [onReadItemInformation] Owner");
 
-    Request req = this.requests.get(msg.requestId);
+    Request req = this.requests.get(msg.clientName);
 
     // i. check if request is set (if the timeout has not expired)
     if(req != null) {
       // ii. Increase the number of replies received
-      req.setCounter(req.getCounter() + 1);
-      int nR = req.getCounter();
+      req.setOperationCounter(req.getOperationCounter() + 1);
+      int nR = req.getOperationCounter();
 
       Item item = req.getItem();
       // iii. Check if the version sent is newer than the one actually stored
@@ -1103,7 +1101,7 @@ public class Node extends AbstractActor {
       // V. check if the quorum R is reached
       if(nR == this.R) {
         // Vi. if it is reached remove the request and return the updated item
-        this.requests.remove(msg.requestId);
+        this.requests.remove(msg.clientName);
 
         // model a random network/processing delay
         try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
@@ -1139,8 +1137,8 @@ public class Node extends AbstractActor {
   // iX. return the error write operation response
   private void onTimeout(Message.Timeout msg){
     // i. Check if the request is set, if it is set
-    if(this.requests.containsKey(msg.requestId) == true){
-      Request req = this.requests.remove(msg.requestId);
+    if(this.requests.containsKey(msg.clientName) == true){
+      Request req = this.requests.remove(msg.clientName);
       // ii. Check if the operation requested is a read or write
       if(req.getType() == Type.GET) {
         // model a random network/processing delay
@@ -1199,7 +1197,7 @@ public class Node extends AbstractActor {
   // a. coordinator receive the request from the client and request to the N responsible nodes the actual last version of the item
   
   // Coordinator receive the update request from the client and perform the following protocol:
-  // i. set the new request and update the lock requested with the request counter
+  // i. Set the new request
   // ii. get the responsible nodes for the item
   // iii. check if the coordinator is responsible for the item
   // iV. check if no lock is set
@@ -1216,10 +1214,9 @@ public class Node extends AbstractActor {
     Item itemNode = this.items.get(item.getKey());
 
 
-    // i. set the new request and update the lock requested with the request counter
-    counterRequest++;
-    Request req = new Request(this.getSender(), item, Type.UPDATE);
-    this.requests.put(counterRequest, req);
+    // i. Set the new request
+    Request req = new Request(this.getSender(), item, Type.UPDATE, clientName);
+    this.requests.put(clientName, req);
 
     // ii. get the responsible nodes for the item
     Set<Integer> respNodes = getResponsibleNode(item.getKey());
@@ -1233,7 +1230,7 @@ public class Node extends AbstractActor {
         this.locks.put(item.getKey(), msg.clientName);
         System.out.println("[" + this.getSelf().path().name() + "] [onUpdate] Coordinator 1 item " + item.getKey() + " lock-client: " + clientName);
         //Increase the responses relative to the update request
-        req.setCounter(req.getCounter() + 1);
+        req.setOperationCounter(req.getOperationCounter() + 1);
 
         //Check if the item is already stored in the node
         if (this.items.get(item.getKey()) != null) {
@@ -1244,7 +1241,7 @@ public class Node extends AbstractActor {
     }
 
     //Get the number of write replies
-    int nW = req.getCounter();
+    int nW = req.getOperationCounter();
 
     // Vi. check if the W quorum is reached
     if (nW < this.W) {
@@ -1256,7 +1253,7 @@ public class Node extends AbstractActor {
           try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
           catch (InterruptedException e) { e.printStackTrace(); }
 
-          (peers.get(node)).tell(new Message.Version(clientName, counterRequest, item), this.getSelf());
+          (peers.get(node)).tell(new Message.Version(clientName, item), this.getSelf());
         }
       }
 
@@ -1264,7 +1261,7 @@ public class Node extends AbstractActor {
       getContext().system().scheduler().scheduleOnce(
               Duration.create(Main.T, TimeUnit.SECONDS),
               this.getSelf(),
-              new Message.Timeout(clientName, counterRequest, item.getKey()), // the message to send,
+              new Message.Timeout(clientName, item.getKey()), // the message to send,
               getContext().system().dispatcher(), this.getSelf()
       );
     } else if (nW == this.W) { // this should be only if W is 1
@@ -1277,7 +1274,7 @@ public class Node extends AbstractActor {
         this.locks.remove(item.getKey());
       }
       //Remove the requests since it is satisfied (otherwise the timeout will expire
-      this.requests.remove(counterRequest);
+      this.requests.remove(clientName);
       // model a random network/processing delay
       try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
       catch (InterruptedException e) { e.printStackTrace(); }
@@ -1317,7 +1314,7 @@ public class Node extends AbstractActor {
       catch (InterruptedException e) { e.printStackTrace(); }
 
       // iV. return the item with the actual version stored
-      this.getSender().tell(new Message.UpdateVersion(msg.clientName, msg.requestId, item), this.getSelf());
+      this.getSender().tell(new Message.UpdateVersion(msg.clientName, item), this.getSelf());
     } else {
       //No response if the lock is not available
       System.out.println("[" + this.getSelf().path().name() + "] [onVersion] Owner: It's locked: item " + item.getKey() +  " -> lock by " + this.locks.get(msg.item.getKey()) + " me: " + msg.clientName +  " (on node) " + this.key);
@@ -1340,14 +1337,14 @@ public class Node extends AbstractActor {
     Item item = new Item(msg.item);
     System.out.println("["+this.getSelf().path().name()+"] [onUpdateVersion] Coordinator");
 
-    Request req = this.requests.get(msg.requestId);
+    Request req = this.requests.get(msg.clientName);
 
     // i. check if the request is yet there (no timeout expired)
     if(req != null) {
       // ii. Update the number of the responses relative to the write requested
-      req.setCounter(req.getCounter() + 1);
+      req.setOperationCounter(req.getOperationCounter() + 1);
       Item itemReq = req.getItem();
-      int nW = req.getCounter();
+      int nW = req.getOperationCounter();
 
       // iii. Check if the quorum has been reached
       if(nW < this.W){
@@ -1361,7 +1358,7 @@ public class Node extends AbstractActor {
         itemReq.setVersion(itemReq.getVersion() + 1);
 
         // Vii. remove the request (otherwise the timeout will expire)
-        this.requests.remove(msg.requestId);
+        this.requests.remove(msg.clientName);
 
         // model a random network/processing delay
         try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }

@@ -493,7 +493,7 @@ public class Main {
     catch (InterruptedException e) { e.printStackTrace(); }
     System.out.println("========================================\n\n");
     System.out.println("========================================");
-    System.out.println("Update and insert other elements");
+    System.out.println("Update and insert other elements: 48 should succeed, while 39 and 64 should fail since node6, one of the responsible nodes, is crashed");
     // write new items
     c1.tell(new ClientMessage.Update(new Item(39, "VALUE39"), n5), ActorRef.noSender());
     c2.tell(new ClientMessage.Update(new Item(48, "VALUE48"), n5), ActorRef.noSender());
@@ -527,9 +527,9 @@ public class Main {
     // test timeout reqActiveNodeList
 
     ///// node n7 crashes
+    System.out.println("========================================\n\n");
     System.out.println("========================================");
     System.out.println("TEST TIMEOUT reqActiveNodeList (bootstrapping peer crashed)");
-    System.out.println("========================================\n\n");
     System.out.println("========================================");
     System.out.println("Node7 crashes");
     n7.tell(new Message.CrashMsg(), ActorRef.noSender());
@@ -571,7 +571,7 @@ public class Main {
     catch (InterruptedException e) { e.printStackTrace(); }
 
     System.out.println("========================================");
-    System.out.println("TEST TIMEOUT reqActiveNodeList (bootstrapping peer crashed)");
+    System.out.println("END TEST TIMEOUT reqActiveNodeList (bootstrapping peer crashed)");
     System.out.println("========================================\n\n");
     System.out.println("========================================");
     System.out.println("TEST TIMEOUT reqDataItemsResponsibleFor (responsible updated items node crashed)");
@@ -785,7 +785,7 @@ public class Main {
     catch (InterruptedException e) { e.printStackTrace(); }
     System.out.println("========================================\n\n");
     System.out.println("========================================");
-    System.out.println("Node5 try to recover but node7, who is responsible for some of his updated prints nodes and items lists");
+    System.out.println("Node5 try to recover but node7, who is responsible for some of his updated items, prints nodes and items lists");
 
     //// node n5 recover
     n5.tell(new Message.RecoveryMsg(n6), ActorRef.noSender());
