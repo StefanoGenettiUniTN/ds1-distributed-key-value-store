@@ -7,7 +7,7 @@ import akka.actor.ActorSystem;
 
 public class Main {
 
-  final static int N = 3; // degree of replication
+  final static int N = 2; // degree of replication
   final static int R = 2; // read quorum
   final static int W = 2; // write quorum
   final static int T = 5; // timeout
