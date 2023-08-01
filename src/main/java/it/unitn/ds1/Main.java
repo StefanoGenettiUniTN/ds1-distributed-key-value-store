@@ -43,6 +43,25 @@ public class Main {
     System.out.println("========================================\n\n");
 
     System.out.println("========================================");
+    System.out.println("Create Client c1");
+    ActorRef c1 = system.actorOf(Client.props(),"c1");
+
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+
+    System.out.println("========================================");
+    System.out.println("Try to insert first item: it should fail since no enough nodes are in the ring");
+
+    // perform write operations
+    c1.tell(new ClientMessage.Update(new Item(6, "VALUE6"), n1), ActorRef.noSender());
+
+    try { Thread.sleep(SLEEPTIMESHORT); }
+    catch (InterruptedException e) { e.printStackTrace(); }
+
+    System.out.println("========================================\n\n");
+
+    System.out.println("========================================");
     System.out.println("Create Node n2(key:30) and join; finally it prints the list of active node");
 
     //// create node n2
@@ -137,7 +156,6 @@ public class Main {
     System.out.println("Create three clients");
 
     // 2. Create client nodes and perform read and write operations
-    ActorRef c1 = system.actorOf(Client.props(),"c1");
     ActorRef c2 = system.actorOf(Client.props(),"c2");
     ActorRef c3 = system.actorOf(Client.props(),"c3");
 
@@ -401,7 +419,7 @@ public class Main {
     // print item set of the nodes
     System.out.println("========================================\n\n");
     System.out.println("========================================");
-    System.out.println("Node4 (key:10) leaving");
+    System.out.println("Node4 (key:10) try to leave: it should fail since no enough nodes are in the ring");
     //// leave n4
     n4.tell(new Message.LeaveMsg(), ActorRef.noSender());
 
@@ -412,9 +430,11 @@ public class Main {
     // print item set of the nodes
     System.out.println("========================================\n\n");
     System.out.println("========================================");
-    System.out.println("Print item of each node after node4 leaves");
+    System.out.println("Print item of each node");
 
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
+    n4.tell(new Message.PrintItemList(), ActorRef.noSender());
+
     // ...end print item set of the nodes
 
     try { Thread.sleep(SLEEPTIMESHORT); }

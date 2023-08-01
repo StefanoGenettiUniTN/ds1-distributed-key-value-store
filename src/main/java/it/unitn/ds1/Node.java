@@ -508,7 +508,12 @@ public class Node extends AbstractActor {
   // a node receives LeaveMsg from main that requests the node to leave
   private void onLeaveMsg(Message.LeaveMsg msg){
     System.out.println("["+this.getSelf().path().name()+"] [onLeaveMsg]"); 
-    
+
+    if(this.peers.size() <= this.N){
+      System.out.println("["+this.getSelf().path().name()+"] [onLeaveMsg] Leave ABORTED since no enough replicas are there in the ring");
+      return;
+    }
+
     this.nodeKeyToResponsibleItem = new HashMap<>();  // nodeKeyToResponsibleItem[k] :: list of item keys the node k is
                                                       // responsible for after the departure of the present node
     this.peers.keySet().forEach((peerKey) -> {this.nodeKeyToResponsibleItem.put(peerKey, new HashSet<>());});  
@@ -1210,9 +1215,14 @@ public class Node extends AbstractActor {
     String clientName = msg.clientName;
     System.out.println("["+this.getSelf().path().name()+"] [onUpdate] Coordinator");
 
+    if(this.peers.size() < this.N){
+      System.out.println("["+this.getSelf().path().name()+"] [onUpdate] ABORTED since no enough nodes are there in the ring");
+      this.getSender().tell(new ClientMessage.UpdateResult(Result.ERROR, null), ActorRef.noSender());
+      return;
+    }
+
     String lock = this.locks.get(item.getKey());
     Item itemNode = this.items.get(item.getKey());
-
 
     // i. Set the new request
     Request req = new Request(this.getSender(), item, Type.UPDATE, clientName);
