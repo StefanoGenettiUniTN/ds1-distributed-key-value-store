@@ -1,11 +1,8 @@
 package it.unitn.ds1;
 import akka.actor.ActorRef;
-import akka.actor.Cancellable;
 import java.io.Serializable;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.TreeMap;
 import java.util.Set;

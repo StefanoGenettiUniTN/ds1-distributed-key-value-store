@@ -15,6 +15,7 @@ public class Main {
   final static int SLEEPTIMEFULL = 2 * T * 1000;
 
   public static void main(String[] args) {
+    // compilation time constants are not properly set
     if(R + W <= N || W <= N/2){
       System.out.println("Parameters N, W and R are set wrongly");
       return;

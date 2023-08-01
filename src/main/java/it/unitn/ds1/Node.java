@@ -14,12 +14,12 @@ public class Node extends AbstractActor {
   private final int R;
   private final int W;
   private final int T;
-  private final int MAXRANDOMDELAYTIME = 1; //Maximum delay time in seconds
+  private final int MAXRANDOMDELAYTIME = 1;       //Maximum delay time in seconds
   private final Random rnd;
-  private final Map<Integer, ActorRef> peers;   // peers[K] points to the node in the group with key K
-  private final Map<Integer, Item> items;       // the set of data item the node is currently responsible for
-  private final Map<String, Request> requests; // lists of the requests
-  private final Map<Integer, String> locks;    // lock mapping used to manage concurrent write
+  private final Map<Integer, ActorRef> peers;     // peers[K] points to the node in the group with key K
+  private final Map<Integer, Item> items;         // the set of data items the node is currently responsible for
+  private final Map<String, Request> requests;    // lists of the requests
+  private final Map<Integer, String> locks;       // lock mapping used to manage concurrent writes
 
   private int key;  // node key
 
@@ -45,9 +45,6 @@ public class Node extends AbstractActor {
   private boolean timeout_ReqDataItemsResponsibleFor_expired;
   private boolean flag_reqDataItemsResponsibleFor_recovery;
   private boolean timeout_ReqDataItemsResponsibleFor_recovery_expired;
-
-  // TODO: noto che alcuni attributi non sono final
-
   //-------------
 
   public Node(int n, int r, int w, int t){
@@ -141,7 +138,7 @@ public class Node extends AbstractActor {
 
   // First node in the network receives this message and
   // initializes the system adding itself to the group
-  private void onInit(Message.InitSystem msg){  // TODO: aggiungere InitSystem message alla documentazione
+  private void onInit(Message.InitSystem msg){
     System.out.println("["+this.getSelf().path().name()+"] [InitSystem] ");
     this.key = msg.key;
     this.peers.put(this.key, this.getSelf());
@@ -261,7 +258,7 @@ public class Node extends AbstractActor {
     if(this.flag_reqDataItemsResponsibleFor == false){
       this.timeout_ReqDataItemsResponsibleFor_expired = true;
       System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReqDataItemsResponsibleFor] ABORT JOIN because no ResDataItemsResponsibleFor has been received before timeout expiration.");
-      this.peers.clear(); // TODO: facendo così, nel report si può parlare di optimistic writeahead log? O una roba del genere?
+      this.peers.clear();
     }
   }
 
@@ -335,7 +332,7 @@ public class Node extends AbstractActor {
       for(Item item : this.items.values()){
         itemSet.add(new Item(item));
       }
-      Message.JoinReadOperationReq msg_JoinReadOperationReq = new Message.JoinReadOperationReq(Collections.unmodifiableSet(itemSet)); // TODO: riflettere se mandare a tutti l'intero itemSet oppure solo la parte della quale il dest è responsabile
+      Message.JoinReadOperationReq msg_JoinReadOperationReq = new Message.JoinReadOperationReq(Collections.unmodifiableSet(itemSet));
       for(ActorRef dest : readDestinationNodes){
         // model a random network/processing delay
         try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
@@ -509,6 +506,7 @@ public class Node extends AbstractActor {
   private void onLeaveMsg(Message.LeaveMsg msg){
     System.out.println("["+this.getSelf().path().name()+"] [onLeaveMsg]"); 
 
+    // Leave ABORTED since no enough replicas are there in the ring
     if(this.peers.size() <= this.N){
       System.out.println("["+this.getSelf().path().name()+"] [onLeaveMsg] Leave ABORTED since no enough replicas are there in the ring");
       return;
@@ -675,7 +673,7 @@ public class Node extends AbstractActor {
       Item updatedItem = new Item(  item.key,
                                     item.getValue(),
                                     item.getVersion());
-      this.items.put(updatedItem.getKey(), updatedItem);  //TODO: riflettere se sono veramente sicuro al 100% che questi item non gli ho mai avuti
+      this.items.put(updatedItem.getKey(), updatedItem);
     }
 
   }
@@ -764,7 +762,7 @@ public class Node extends AbstractActor {
     // the node add itself to the list of nodes currently active
     // indeed the present node has removed all the elements of this.peers
     // in onRecoveryMsg
-    this.peers.put(this.key, this.getSelf()); //TODO: forse nel msg.activeNodes c'è già il this.key
+    this.peers.put(this.key, this.getSelf());
 
     // ii. the node which is recovering should discard those items that are no longer under its responsability
     Set<Item> backup = new HashSet<>(); // we make a backup of those items that are no longer under the responsability of the present node. In this way, in the case of a timeout we can recover these items before aborting the recovery operation.
@@ -856,12 +854,10 @@ public class Node extends AbstractActor {
     System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor_recovery]");
 
     // retrive message data and add the data items the recovery node is responsible for.
-    for(Item item : msg.resSet) { // TODO: chiere a vecchia se si può fare blind o se si deve aggiornare la versione
+    for(Item item : msg.resSet) {
       this.items.put(item.key, new Item(item.key, item.value, item.version));
     }
     System.out.println("["+this.getSelf().path().name()+"] [onResDataItemsResponsibleFor_recovery] Now I am responsible for the following data items:"+this.items.values());
-
-    // TODO: chiedere a vecchia send read operations
 
     // exit crash state 
     this.recover();
@@ -943,8 +939,7 @@ public class Node extends AbstractActor {
   /*----------END GET RESPONSIBLE NODES FOR AN ITEM----------*/
 
   // get clockwise neighbor
-  // this function is called in the context of a join
-  // request, so the present node is not part of the network yet (TODO: magari facciamo in modo che invece questo metodo sia generico. TODO: riflettere su cosa succede quando viene chiamato questo metodo in recovery, mi sono accordo che in quel caso this.key è parte del ring.)
+  // this function is called in the context of join and recovery operations
   private ActorRef getClockwiseNeighbor(){
 
     for(Map.Entry<Integer, ActorRef> entry : this.peers.entrySet()) {
@@ -954,31 +949,6 @@ public class Node extends AbstractActor {
     }
 
     return ((TreeMap<Integer, ActorRef>) this.peers).firstEntry().getValue();
-  }
-
-  // get predecessor TODO: riflettere cosa succede quando esiste solo un nodo nel cerchio
-  private ActorRef getPredecessor(){
-    Integer currentNodeKey = -1;
-    Integer prevNodeKey = -1;
-    Integer predecessorNodeKey = -1;
-
-    for(Map.Entry<Integer, ActorRef> entry : this.peers.entrySet()) {
-
-      currentNodeKey = entry.getKey();
-
-      if(currentNodeKey == this.key){
-        if(prevNodeKey!=-1){
-          predecessorNodeKey = prevNodeKey;
-        }else{
-          predecessorNodeKey = ((TreeMap<Integer, ActorRef>) this.peers).lastEntry().getKey();
-        }
-        break;
-      }
-
-      prevNodeKey = currentNodeKey;
-    }
-
-    return this.peers.get(predecessorNodeKey);
   }
 
   /*----------GET----------*/
@@ -1219,6 +1189,7 @@ public class Node extends AbstractActor {
     String clientName = msg.clientName;
     System.out.println("["+this.getSelf().path().name()+"] [onUpdate] Coordinator");
 
+    // Write ABORTED since no enough nodes are there in the ring
     if(this.peers.size() < this.N){
       System.out.println("["+this.getSelf().path().name()+"] [onUpdate] ABORTED since no enough nodes are there in the ring");
       this.getSender().tell(new ClientMessage.UpdateResult(Result.ERROR, null), ActorRef.noSender());
@@ -1226,7 +1197,6 @@ public class Node extends AbstractActor {
     }
 
     String lock = this.locks.get(item.getKey());
-    Item itemNode = this.items.get(item.getKey());
 
     // i. Set the new request
     Request req = new Request(this.getSender(), item, Type.UPDATE, clientName);

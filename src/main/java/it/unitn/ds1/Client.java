@@ -1,6 +1,5 @@
 package it.unitn.ds1;
 import akka.actor.AbstractActor;
-import akka.actor.ActorRef;
 import akka.actor.Props;
 
 import java.util.Random;
