@@ -193,8 +193,10 @@ public class Message{
 
     // This class represents the request message to get the updated version of an item
     public static class GetRequest implements Serializable {
+        public final String clientName;
         public final Item item;
-        public GetRequest(Item item) {
+        public GetRequest(String clientName, Item item) {
+            this.clientName = clientName;
             this.item = item;
         }
     }

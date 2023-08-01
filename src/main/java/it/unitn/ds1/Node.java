@@ -1000,11 +1000,11 @@ public class Node extends AbstractActor {
   // VI. if it is reached return the response and delete the request
   private void onGetRequest(Message.GetRequest msg){
     Item item =  new Item(msg.item);
-    String clientName = this.getSelf().path().name();
+    String clientName = msg.clientName;
     System.out.println("["+clientName+"] [onGet] Coordinator");
 
     // i. set a new request
-    Request req = new Request(this.getSender(), new Item(key, ""), Type.GET, clientName);
+    Request req = new Request(this.getSender(), item, Type.GET, clientName);
     this.requests.put(clientName, req);
 
     // ii. get the responsible nodes for the item provided
@@ -1016,6 +1016,7 @@ public class Node extends AbstractActor {
       // if no lock is set, the coordinator can read the item
       // if it is set, the coordinator cannot read the item since a write operation is ongoing and version problems could arise
       if(this.items.containsKey(item.getKey()) && this.locks.get(item.getKey()) == null) {
+        System.out.println("["+clientName+"] [onGet] Coordinator - Owner: " + item);
         req.setOperationCounter(req.getOperationCounter() + 1);
         item.setVersion(msg.item.getVersion());
         item.setValue(msg.item.getValue());
@@ -1085,12 +1086,13 @@ public class Node extends AbstractActor {
   // V. check if the quorum R is reached
   // Vi. if it is reached remove the request and return the updated item
   private void onReadItemInformation(Message.ReadItemInformation msg){
-    System.out.println("["+this.getSelf().path().name()+"] [onReadItemInformation] Owner");
+    System.out.println("["+this.getSelf().path().name()+"] [onReadItemInformation] Coordinator: " + msg.item);
 
     Request req = this.requests.get(msg.clientName);
 
     // i. check if request is set (if the timeout has not expired)
     if(req != null) {
+
       // ii. Increase the number of replies received
       req.setOperationCounter(req.getOperationCounter() + 1);
       int nR = req.getOperationCounter();
@@ -1114,6 +1116,8 @@ public class Node extends AbstractActor {
 
         req.getClient().tell(new ClientMessage.GetResult(Result.SUCCESS, msg.item), ActorRef.noSender());
       }
+    } else {
+      System.out.println("["+this.getSelf().path().name()+"] [onReadItemInformation] Coordinator: " + msg.item + " REQUEST NULL");
     }
   }
 
@@ -1150,7 +1154,7 @@ public class Node extends AbstractActor {
         try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
         catch (InterruptedException e) { e.printStackTrace(); }
         System.out.println("["+this.getSelf().path().name()+"] [onTimeout_ReadOperation] ABORT GET REQUEST");
-        // iii. if the operation is a get, simply return the errot get response
+        // iii. if the operation is a get, simply return the error get response
         req.getClient().tell(new ClientMessage.GetResult(Result.ERROR, null), ActorRef.noSender());
       } else {
         // iV. if it is a write operation, do:

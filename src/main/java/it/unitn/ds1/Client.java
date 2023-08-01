@@ -51,7 +51,7 @@ public class Client extends AbstractActor {
       catch (InterruptedException e) { e.printStackTrace(); }
 
       //Ask the coordinator to perform the request
-      (msg.coordinator).tell(new Message.GetRequest(msg.item), this.getSelf());
+      (msg.coordinator).tell(new Message.GetRequest(this.getSelf().path().name(), msg.item), this.getSelf());
     } else{
       //If another operation is executing, stop and return the message
       System.out.println("ERR: ongoing operations, item " + msg.item);

@@ -153,7 +153,7 @@ public class Main {
    //...end step 1
 
     System.out.println("========================================");
-    System.out.println("Create three clients");
+    System.out.println("Create other clients");
 
     // 2. Create client nodes and perform read and write operations
     ActorRef c2 = system.actorOf(Client.props(),"c2");
@@ -465,7 +465,8 @@ public class Main {
     catch (InterruptedException e) { e.printStackTrace(); }
     System.out.println("========================================\n\n");
     System.out.println("========================================");
-    System.out.println("Node5 and 6 print the ITEM list");
+    System.out.println("Node4, Node5 and Node6 print the ITEM list");
+    n4.tell(new Message.PrintItemList(), ActorRef.noSender());
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
     n6.tell(new Message.PrintItemList(), ActorRef.noSender());
     // ...end print item set of the nodes
@@ -487,7 +488,8 @@ public class Main {
 
     System.out.println("========================================\n\n");
     System.out.println("========================================");
-    System.out.println("Node5, node6 and node7 prints the ITEM list");
+    System.out.println("The node print the ITEM list");
+    n4.tell(new Message.PrintItemList(), ActorRef.noSender());
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
     n6.tell(new Message.PrintItemList(), ActorRef.noSender());
     n7.tell(new Message.PrintItemList(), ActorRef.noSender());
@@ -501,23 +503,17 @@ public class Main {
     System.out.println("Node6 crashes");
     n6.tell(new Message.CrashMsg(), ActorRef.noSender());
 
-    try { Thread.sleep(SLEEPTIMESHORT); }
-    catch (InterruptedException e) { e.printStackTrace(); }
-    System.out.println("========================================\n\n");
-    System.out.println("========================================");
-    System.out.println("Node5 prints the ITEM list");
-    n5.tell(new Message.PrintItemList(), ActorRef.noSender());
-    // ...end print item set of the nodes
+      // ...end print item set of the nodes
 
     try { Thread.sleep(SLEEPTIMESHORT); }
     catch (InterruptedException e) { e.printStackTrace(); }
     System.out.println("========================================\n\n");
     System.out.println("========================================");
-    System.out.println("Update and insert other elements: 48 should succeed, while 39 and 64 should fail since node6, one of the responsible nodes, is crashed");
+    System.out.println("Update and insert other elements: 48 and 64 should succeed, while 39 should fail since node6, one of the responsible nodes, is crashed");
     // write new items
     c1.tell(new ClientMessage.Update(new Item(39, "VALUE39"), n5), ActorRef.noSender());
-    c2.tell(new ClientMessage.Update(new Item(48, "VALUE48"), n5), ActorRef.noSender());
-    c3.tell(new ClientMessage.Update(new Item(64, "VALUE64"), n5), ActorRef.noSender());
+    c2.tell(new ClientMessage.Update(new Item(48, "VALUE48"), n4), ActorRef.noSender());
+    c3.tell(new ClientMessage.Update(new Item(64, "VALUE64"), n7), ActorRef.noSender());
 
     //// node n6 recovery
     try { Thread.sleep(SLEEPTIMEFULL); }
@@ -532,7 +528,8 @@ public class Main {
     catch (InterruptedException e) { e.printStackTrace(); }
     System.out.println("========================================\n\n");
     System.out.println("========================================");
-    System.out.println("Node5, Node6 and Node7 print item list");
+    System.out.println("Print item list for each node");
+    n4.tell(new Message.PrintItemList(), ActorRef.noSender());
     n5.tell(new Message.PrintItemList(), ActorRef.noSender());
     n6.tell(new Message.PrintItemList(), ActorRef.noSender());
     n7.tell(new Message.PrintItemList(), ActorRef.noSender());
@@ -641,17 +638,17 @@ public class Main {
     System.out.println("========================================");
     System.out.println("TEST TIMEOUT ANNOUNCE DEPARTURE");
     System.out.println("========================================");
-    System.out.println("Node6 crashes");
+    System.out.println("Node4 crashes");
 
     // test timeout AnnounceDeparture
-    ///// node n6 crashes
-    n6.tell(new Message.CrashMsg(), ActorRef.noSender());
+    ///// node n4 crashes
+    n4.tell(new Message.CrashMsg(), ActorRef.noSender());
 
     try { Thread.sleep(SLEEPTIMESHORT); }
     catch (InterruptedException e) { e.printStackTrace(); }
     System.out.println("========================================\n\n");
     System.out.println("========================================");
-    System.out.println("Node7 try to leave but since n6, who becomes responsible for some items, is crashed, it will fail and the timeout expires");
+    System.out.println("Node7 try to leave but since n4, who becomes responsible for some items, is crashed, it will fail and the timeout expires");
 
     //// node n7 leave
     n7.tell(new Message.LeaveMsg(), ActorRef.noSender());
@@ -660,10 +657,10 @@ public class Main {
     catch (InterruptedException e) { e.printStackTrace(); }
     System.out.println("========================================\n\n");
     System.out.println("========================================");
-    System.out.println("Node6 recovery");
+    System.out.println("Node4 recovery");
 
     ///// node n6 recover
-    n6.tell(new Message.RecoveryMsg(n5), ActorRef.noSender());
+    n4.tell(new Message.RecoveryMsg(n5), ActorRef.noSender());
 
     try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
@@ -707,7 +704,7 @@ public class Main {
     System.out.println("========================================");
     System.out.println("Node8 will join but it cannot read updated items since node5 has crashed");
     ///// join n8
-    n8.tell(new Message.JoinMsg(63, n6), ActorRef.noSender());
+    n8.tell(new Message.JoinMsg(38, n6), ActorRef.noSender());
 
     try { Thread.sleep(SLEEPTIMEFULL); }
     catch (InterruptedException e) { e.printStackTrace(); }
@@ -794,7 +791,7 @@ public class Main {
     System.out.println("========================================");
     System.out.println("TEST TIMEOUT ReqDataItemsResponsibleFor_recovery (nodes responsible for updated items are crashed)");
     System.out.println("========================================");
-    System.out.println("Node5 and node7 crash");
+    System.out.println("Node4 and node5 crash");
 
     //// node n5 crash
     n5.tell(new Message.CrashMsg(), ActorRef.noSender());
