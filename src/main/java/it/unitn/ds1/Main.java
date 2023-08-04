@@ -5,6 +5,42 @@ import akka.actor.Actor;
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 
+
+/*
+    AUTHOR: Carlin Nicola and Stefano Genetti
+
+    DESCRIPTION: this project represents a distributed system which implements a distributed hash table based
+      peer-to-peer key-value storage service inspired by Amazon Dynamo.
+      The architecture is composed by two Akka actor classes whose instances are referred to as nodes
+      and clients which interacts by means of exchange of messages. In order to simulate the behaviour
+      of a real computer network, we add random delays before each transmission.
+      The distributed hash table is composed by multiple peer nodes interconnected together. The stored
+      data is partitioned among these nodes in order to balance the load. Symmetrically, several nodes
+      record the same items for reliability and accessibility. The partitioning is based on the keys that
+      are associated with both the stored items and the nodes. We consider only unsigned integers as
+      keys, which are logically arranged in a circular space, such that the largest key value wraps around
+      to the smallest key value like minutes on analog clocks.
+      On the other hand, the clients support data services which consist of two commands: i. update(key,
+      value); ii. get(key)→value; which are used respectively to insert and read from the DHT. Any
+      storage node in the network is able to fulfill both requests regardless of the key, forwarding data
+      to/from appropriate nodes. Although multiple clients can read and write on the data structure in
+      parallel, we assume that each client performs read and write operations sequentially one at a time
+      The overlay ring network topology of nodes which constitutes the distributed hash table, is not
+      static; on the contrary nodes can dynamically join, leave, crash and recover one at a time and
+      only when there are no ongoing operations. We assume that operations might resume while
+      one or more nodes are still in crashed state. In order to handle these functionalities, each node
+      supports management services which can be accessed by means of dedicated messages. When
+      nodes leave or join the network, the system repartitions the data items accordingly.
+
+
+
+    EXECUTION:  the execution1, that is started by default, show a general and complete test of the project.
+      It is possible to see a specific test, by uncommenting execution2, on how the replication with W quorum works.
+      It is recommended to execute only one example at time since the output is very long.
+
+ */
+
+
 public class Main {
 
   final static int T = 5; // timeout
@@ -13,7 +49,7 @@ public class Main {
 
   public static void main(String[] args) {
     execution1(2,2,2); //Complete example
-    execution2(5,4,2); //Specific example of W quorum
+    //execution2(5,4,2); //Specific example of W quorum
 
     try {
       System.out.println(">>> Press ENTER to exit <<<");
