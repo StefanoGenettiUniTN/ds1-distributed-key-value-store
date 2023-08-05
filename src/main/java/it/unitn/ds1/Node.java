@@ -316,24 +316,34 @@ public class Node extends AbstractActor {
       //--- perform read operations to ensure that the received items are up to date.
       //--- remark: no read request is sent to the clockwise neighbor which has just sent the current set of items
       //--- for each item we compute the responsible nodes which are the destinations of the update request
-      Set<ActorRef> readDestinationNodes = new HashSet<>();
+      HashMap<Integer, HashSet<Integer>> readDestinationNodes = new HashMap<>();
+
+      // allocate space for each peer such that: readDestinationNodes[n1] = set of item keys node n1 is responsible for.
+      // In this way we do not forward items towards destinations which are not responsible for them.
+      this.peers.keySet().forEach((peerKey) -> {readDestinationNodes.put(peerKey, new HashSet<>());});  
 
       for(Integer ik : this.items.keySet()){
         for(Integer ik_resp_key : this.getResponsibleNode(ik)){
           if(!this.peers.get(ik_resp_key).equals(this.getSender())){ // we have to ignore the clockwise neighbour which has already sent a response
             this.join_update_item_response_counter.put(ik, 0);
-            readDestinationNodes.add(this.peers.get(ik_resp_key));
+            readDestinationNodes.get(ik_resp_key).add(ik);
           }
         }
       }
 
       // send read operation
-      Set<Item> itemSet = new HashSet<>();
-      for(Item item : this.items.values()){
-        itemSet.add(new Item(item));
-      }
-      Message.JoinReadOperationReq msg_JoinReadOperationReq = new Message.JoinReadOperationReq(Collections.unmodifiableSet(itemSet));
-      for(ActorRef dest : readDestinationNodes){
+      Message.JoinReadOperationReq msg_JoinReadOperationReq;
+      for(Map.Entry<Integer, HashSet<Integer>> entry : readDestinationNodes.entrySet()){
+
+        ActorRef dest = this.peers.get(entry.getKey()); // retrive the destination
+
+        Set<Item> itemSet = new HashSet<>();
+        for(Integer itemKey : entry.getValue()){
+          itemSet.add(new Item(this.items.get(itemKey)));
+        }
+
+        msg_JoinReadOperationReq = new Message.JoinReadOperationReq(Collections.unmodifiableSet(itemSet));
+
         // model a random network/processing delay
         try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
         catch (InterruptedException e) { e.printStackTrace(); }
