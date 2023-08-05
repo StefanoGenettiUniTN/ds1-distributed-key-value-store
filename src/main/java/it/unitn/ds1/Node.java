@@ -996,10 +996,10 @@ public class Node extends AbstractActor {
       // if no lock is set, the coordinator can read the item
       // if it is set, the coordinator cannot read the item since a write operation is ongoing and version problems could arise
       if(this.items.containsKey(item.getKey()) && this.locks.get(item.getKey()) == null) {
-        System.out.println("["+clientName+"] [onGet] Coordinator - Owner: " + item);
         req.setOperationCounter(req.getOperationCounter() + 1);
-        item.setVersion(msg.item.getVersion());
-        item.setValue(msg.item.getValue());
+        item.setVersion(this.items.get(item.getKey()).getVersion());
+        item.setValue(this.items.get(item.getKey()).getValue());
+        System.out.println("["+clientName+"] [onGet] Coordinator Read: " + item);
       }
     }
 

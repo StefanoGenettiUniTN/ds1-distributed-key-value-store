@@ -48,8 +48,8 @@ public class Main {
   final static int SLEEPTIMEFULL = 2 * T * 1000;
 
   public static void main(String[] args) {
-    execution1(2,2,2); //Complete example
-    //execution2(5,4,2); //Specific example of W quorum
+    //execution1(2,2,2); //Complete example
+    execution2(5,4,2); //Specific example of W quorum
 
     try {
       System.out.println(">>> Press ENTER to exit <<<");
@@ -290,7 +290,7 @@ public class Main {
     System.out.println("========================================\n\n");
 
     System.out.println("========================================");
-    System.out.println("Lock Test 1: two clients try to update the same item with different coordinator: one or both should fail");
+    System.out.println("Lock Test 1: two clients try to update the same item with different coordinator: none, one or both may fail depending on delay");
 
     // update item
     c1.tell(new ClientMessage.Update(new Item(15, "UPDATE_LOCK1_C1"), n1), ActorRef.noSender());
@@ -313,7 +313,7 @@ public class Main {
     System.out.println("========================================\n\n");
 
     System.out.println("========================================");
-    System.out.println("Lock Test 2: two clients try to update the same item with same coordinator: one or both should fail");
+    System.out.println("Lock Test 2: two clients try to update the same item with same coordinator: none, one or both may fail depending on delay");
 
     // update item
     c2.tell(new ClientMessage.Update(new Item(15, "UPDATE_LOCK2_N3_CL2"), n3), ActorRef.noSender());
@@ -361,7 +361,7 @@ public class Main {
 
     System.out.println("========================================\n\n");
     System.out.println("========================================");
-    System.out.println("Lock Test 3: two clients try to update (item not present) the same item with different coordinator: one or both should fail");
+    System.out.println("Lock Test 3: two clients try to update (item not present) the same item with different coordinator: none, one or both may fail depending on delay");
 
     c2.tell(new ClientMessage.Update(new Item(49, "UPDATE_49_N1"), n1), ActorRef.noSender());
     c1.tell(new ClientMessage.Update(new Item(49, "UPDATE_49_N2"), n2), ActorRef.noSender());
@@ -843,7 +843,7 @@ public class Main {
     System.out.println("========================================");
     System.out.println("TEST TIMEOUT ReqDataItemsResponsibleFor_recovery (nodes responsible for updated items are crashed)");
     System.out.println("========================================");
-    System.out.println("Node4 and node5 crash");
+    System.out.println("Node5 and node7 crash");
 
     //// node n5 crash
     n5.tell(new Message.CrashMsg(), ActorRef.noSender());
