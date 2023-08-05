@@ -48,8 +48,8 @@ public class Main {
   final static int SLEEPTIMEFULL = 2 * T * 1000;
 
   public static void main(String[] args) {
-    //execution1(2,2,2); //Complete example
-    execution2(5,4,2); //Specific example of W quorum
+    execution1(2,2,2); //Complete example
+    //execution2(5,4,2); //Specific example of W quorum
 
     try {
       System.out.println(">>> Press ENTER to exit <<<");
