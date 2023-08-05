@@ -7,7 +7,7 @@ import akka.actor.ActorSystem;
 
 
 /*
-    AUTHOR: Carlin Nicola and Stefano Genetti
+    AUTHORS: Carlin Nicola and Stefano Genetti
 
     DESCRIPTION: this project represents a distributed system which implements a distributed hash table based
       peer-to-peer key-value storage service inspired by Amazon Dynamo.
@@ -34,7 +34,7 @@ import akka.actor.ActorSystem;
 
 
 
-    EXECUTION:  the execution1, that is started by default, show a general and complete test of the project.
+    EXECUTION:  the execution1, that is started by default, shows a general and complete test of the project.
       It is possible to see a specific test, by uncommenting execution2, on how the replication with W quorum works.
       It is recommended to execute only one example at time since the output is very long.
 
