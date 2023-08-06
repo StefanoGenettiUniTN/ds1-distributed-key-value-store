@@ -334,20 +334,21 @@ public class Node extends AbstractActor {
       // send read operation
       Message.JoinReadOperationReq msg_JoinReadOperationReq;
       for(Map.Entry<Integer, HashSet<Integer>> entry : readDestinationNodes.entrySet()){
+        if(!entry.getValue().isEmpty()){
+          ActorRef dest = this.peers.get(entry.getKey()); // retrive the destination
 
-        ActorRef dest = this.peers.get(entry.getKey()); // retrive the destination
+          Set<Item> itemSet = new HashSet<>();
+          for(Integer itemKey : entry.getValue()){
+            itemSet.add(new Item(this.items.get(itemKey)));
+          }
 
-        Set<Item> itemSet = new HashSet<>();
-        for(Integer itemKey : entry.getValue()){
-          itemSet.add(new Item(this.items.get(itemKey)));
+          msg_JoinReadOperationReq = new Message.JoinReadOperationReq(Collections.unmodifiableSet(itemSet));
+
+          // model a random network/processing delay
+          try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+          catch (InterruptedException e) { e.printStackTrace(); }
+          dest.tell(msg_JoinReadOperationReq, this.getSelf());
         }
-
-        msg_JoinReadOperationReq = new Message.JoinReadOperationReq(Collections.unmodifiableSet(itemSet));
-
-        // model a random network/processing delay
-        try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
-        catch (InterruptedException e) { e.printStackTrace(); }
-        dest.tell(msg_JoinReadOperationReq, this.getSelf());
       }
       //---
     }
