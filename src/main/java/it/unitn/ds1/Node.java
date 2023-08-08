@@ -1095,7 +1095,7 @@ public class Node extends AbstractActor {
         try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
         catch (InterruptedException e) { e.printStackTrace(); }
 
-        req.getClient().tell(new ClientMessage.GetResult(Result.SUCCESS, msg.item), ActorRef.noSender());
+        req.getClient().tell(new ClientMessage.GetResult(Result.SUCCESS, item), ActorRef.noSender());
       }
     } else {
       System.out.println("["+this.getSelf().path().name()+"] [onReadItemInformation] Coordinator: " + msg.item + " REQUEST NULL");
@@ -1342,12 +1342,12 @@ public class Node extends AbstractActor {
       int nW = req.getOperationCounter();
 
       // iii. Check if the quorum has been reached
-      if(nW < this.W){
-        // iV. if not, check only if the version of the item received is newer than the one stored, if so update the version of stored item
-        if(msg.item.getVersion() > itemReq.getVersion()){
-          itemReq.setVersion(msg.item.getVersion());
-        }
-      } else if(nW == this.W) {
+      // iV. if not, check only if the version of the item received is newer than the one stored, if so update the version of stored item
+      if(msg.item.getVersion() > itemReq.getVersion()){
+        itemReq.setVersion(msg.item.getVersion());
+      }
+      
+      if(nW == this.W) {
         // v. if quorum is reached perform the following operation
         // Vi. update the version of the item to a new one (the one stored is the last already there)
         itemReq.setVersion(itemReq.getVersion() + 1);
