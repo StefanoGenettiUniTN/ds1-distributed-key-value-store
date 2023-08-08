@@ -1364,11 +1364,24 @@ public class Node extends AbstractActor {
 
         // iV. Send the item to update to all the N nodes
         for (int node : getResponsibleNode(item.getKey())) {
-          // model a random network/processing delay
-          try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
-          catch (InterruptedException e) { e.printStackTrace(); }
 
-          (peers.get(node)).tell(new Message.Write(msg.clientName, itemReq), this.getSelf());
+          if(node == this.key){
+            String lock = this.locks.get(itemReq.getKey());
+            // i. Check if the lock is the one requested
+            if(lock != null && lock.equals(msg.clientName)) {
+              // ii. if the lock is the one requested remove it
+              this.locks.remove(itemReq.getKey());
+            }
+            // iii. Update the item
+            this.items.put(itemReq.getKey(), itemReq);
+            System.out.println("["+this.getSelf().path().name()+"] [onWriteInformation] Coordinator: " + key + " ITEM: " + itemReq);
+          } else {
+            // model a random network/processing delay
+            try { Thread.sleep(rnd.nextInt(this.MAXRANDOMDELAYTIME*100) * 10); }
+            catch (InterruptedException e) { e.printStackTrace(); }
+
+            (peers.get(node)).tell(new Message.Write(msg.clientName, itemReq), this.getSelf());
+          }
         }
       }
     }
